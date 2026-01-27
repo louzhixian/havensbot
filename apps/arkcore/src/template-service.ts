@@ -281,6 +281,86 @@ export const applyTemplate = async (
   return result;
 };
 
+export interface ResetGuildResult {
+  success: boolean;
+  channelsDeleted: number;
+  categoriesDeleted: number;
+  configsDeleted: number;
+  errors: string[];
+}
+
+/**
+ * Reset guild by deleting all bot-managed channels and configs
+ * Useful for testing template apply from scratch
+ */
+export const resetGuild = async (
+  guild: Guild
+): Promise<ResetGuildResult> => {
+  const result: ResetGuildResult = {
+    success: false,
+    channelsDeleted: 0,
+    categoriesDeleted: 0,
+    configsDeleted: 0,
+    errors: [],
+  };
+
+  const guildId = guild.id;
+
+  // Get all channel configs for this guild
+  const configs = await prisma.channelConfig.findMany({
+    where: { guildId },
+  });
+
+  const managedChannelIds = new Set(configs.map((c) => c.channelId));
+  const categoriesToDelete = new Set<string>();
+
+  // Delete managed channels
+  for (const config of configs) {
+    try {
+      const channel = await guild.channels.fetch(config.channelId).catch(() => null);
+      if (channel) {
+        // Track parent category for later deletion
+        if (channel.parentId) {
+          categoriesToDelete.add(channel.parentId);
+        }
+        await channel.delete("Template reset");
+        result.channelsDeleted++;
+        logger.info({ guildId, channelId: config.channelId }, "Deleted channel");
+      }
+    } catch (error) {
+      result.errors.push(`Failed to delete channel ${config.channelId}: ${error}`);
+    }
+  }
+
+  // Delete empty categories that were parents of managed channels
+  for (const categoryId of categoriesToDelete) {
+    try {
+      const category = await guild.channels.fetch(categoryId).catch(() => null);
+      if (category && category.type === ChannelType.GuildCategory) {
+        // Check if category is now empty
+        const children = guild.channels.cache.filter((ch) => ch.parentId === categoryId);
+        if (children.size === 0) {
+          await category.delete("Template reset - empty category");
+          result.categoriesDeleted++;
+          logger.info({ guildId, categoryId }, "Deleted empty category");
+        }
+      }
+    } catch (error) {
+      result.errors.push(`Failed to delete category ${categoryId}: ${error}`);
+    }
+  }
+
+  // Delete all channel configs for this guild
+  const deleteResult = await prisma.channelConfig.deleteMany({
+    where: { guildId },
+  });
+  result.configsDeleted = deleteResult.count;
+  logger.info({ guildId, count: deleteResult.count }, "Deleted channel configs");
+
+  result.success = result.errors.length === 0;
+  return result;
+};
+
 // Builtin template: havens-default
 export const HAVENS_DEFAULT_TEMPLATE: TemplateStructure = {
   guildSettings: {

@@ -13,7 +13,7 @@ import {
   disableSkill,
 } from "./guild-settings.js";
 import type { SkillRegistry } from "./skills/index.js";
-import { listTemplates, applyTemplate } from "./template-service.js";
+import { listTemplates, applyTemplate, resetGuild } from "./template-service.js";
 import { AppConfig } from "./config.js";
 import {
   ADMIN_CHANNEL_NAME,
@@ -461,6 +461,11 @@ export const commandData = [
             .setDescription("Template name (e.g., havens-default)")
             .setRequired(true)
         )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("reset")
+        .setDescription("⚠️ Delete all bot-managed channels and configs (for testing)")
     ),
 ].map((command) => command.toJSON());
 
@@ -1326,6 +1331,31 @@ export const handleInteraction = async (
       if (result.errors.length > 0) {
         message += `\n\n**错误**:\n${result.errors.slice(0, 3).map((e) => `• ${e}`).join("\n")}`;
       }
+
+      await interaction.editReply({ content: message });
+      return;
+    }
+
+    if (subcommand === "reset") {
+      await interaction.deferReply();
+
+      const result = await resetGuild(guild);
+
+      if (!result.success && result.errors.length > 0 && result.channelsDeleted === 0) {
+        await interaction.editReply({
+          content: `❌ 重置失败\n\n**错误**:\n${result.errors.map((e) => `• ${e}`).join("\n")}`,
+        });
+        return;
+      }
+
+      let message = `🗑️ **Guild 已重置**\n\n`;
+      message += `**删除**: ${result.channelsDeleted} 个频道, ${result.categoriesDeleted} 个空分类, ${result.configsDeleted} 个配置\n`;
+
+      if (result.errors.length > 0) {
+        message += `\n**错误**:\n${result.errors.slice(0, 3).map((e) => `• ${e}`).join("\n")}`;
+      }
+
+      message += `\n\n现在可以运行 \`/template apply havens-default\` 重新创建频道`;
 
       await interaction.editReply({ content: message });
       return;
