@@ -189,3 +189,32 @@ model ChannelConfig {
   @@unique([guildId, categoryId, role])
   @@index([guildId, role])
 }
+
+model GuildSettings {
+  id              String    @id @default(cuid())
+  guildId         String    @unique
+
+  // Basic config
+  timezone        String    @default("UTC")
+  locale          String    @default("en")
+
+  // Subscription
+  tier            String    @default("free")  // free | premium
+  tierExpiresAt   DateTime?
+
+  // Skills
+  enabledSkills   String[]  @default(["digest", "favorites"])
+
+  // Quotas
+  rssSourceLimit  Int       @default(10)
+  llmDailyQuota   Int       @default(0)
+  llmUsedToday    Int       @default(0)
+
+  // Skill-specific configs (JSON)
+  skillConfigs    Json      @default("{}")
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([tier])
+}
