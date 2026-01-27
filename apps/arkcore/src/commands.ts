@@ -1,9 +1,18 @@
 import {
+  ApplicationCommandOptionType,
   ChannelType,
   ChatInputCommandInteraction,
   Client,
   SlashCommandBuilder,
 } from "discord.js";
+import {
+  getOrCreateGuildSettings,
+  getGuildSettings,
+  updateGuildSettings,
+  enableSkill,
+  disableSkill,
+} from "./guild-settings.js";
+import type { SkillRegistry } from "./skills/index.js";
 import { AppConfig } from "./config.js";
 import {
   ADMIN_CHANNEL_NAME,
@@ -387,12 +396,61 @@ export const commandData = [
     .addSubcommand((sub) =>
       sub.setName("list").setDescription("List all configurations")
     ),
+  new SlashCommandBuilder()
+    .setName("setup")
+    .setDescription("Configure Haven for this server")
+    .addStringOption((option) =>
+      option
+        .setName("timezone")
+        .setDescription("Set server timezone (e.g., Asia/Tokyo, UTC)")
+        .setRequired(false)
+    )
+    .addStringOption((option) =>
+      option
+        .setName("locale")
+        .setDescription("Set language")
+        .setRequired(false)
+        .addChoices(
+          { name: "English", value: "en" },
+          { name: "中文", value: "zh" },
+          { name: "日本語", value: "ja" }
+        )
+    ),
+  new SlashCommandBuilder()
+    .setName("skills")
+    .setDescription("Manage Haven skills")
+    .addSubcommand((sub) =>
+      sub.setName("list").setDescription("List all available skills")
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("enable")
+        .setDescription("Enable a skill")
+        .addStringOption((option) =>
+          option
+            .setName("skill")
+            .setDescription("Skill to enable")
+            .setRequired(true)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("disable")
+        .setDescription("Disable a skill")
+        .addStringOption((option) =>
+          option
+            .setName("skill")
+            .setDescription("Skill to disable")
+            .setRequired(true)
+        )
+    ),
 ].map((command) => command.toJSON());
 
 export const handleInteraction = async (
   interaction: ChatInputCommandInteraction,
   config: AppConfig,
-  client: Client
+  client: Client,
+  registry?: SkillRegistry
 ): Promise<void> => {
   if (!interaction.guildId || !interaction.channelId) {
     await interaction.reply({
@@ -1066,6 +1124,120 @@ export const handleInteraction = async (
       content: "Unknown config subcommand.",
       ephemeral: true,
     });
+    return;
+  }
+
+  if (interaction.commandName === "setup") {
+    const guildId = interaction.guildId;
+    if (!guildId) {
+      await interaction.reply({ content: "This command can only be used in a guild.", ephemeral: true });
+      return;
+    }
+
+    const timezone = interaction.options.getString("timezone");
+    const locale = interaction.options.getString("locale");
+
+    const settings = await getOrCreateGuildSettings(guildId);
+
+    const updates: Partial<{ timezone: string; locale: string }> = {};
+    if (timezone) updates.timezone = timezone;
+    if (locale) updates.locale = locale;
+
+    if (Object.keys(updates).length > 0) {
+      await updateGuildSettings(guildId, updates);
+    }
+
+    const currentSettings = await getGuildSettings(guildId);
+
+    await interaction.reply({
+      content: `**Haven 设置**\n\n` +
+        `时区: \`${currentSettings?.timezone || "UTC"}\`\n` +
+        `语言: \`${currentSettings?.locale || "en"}\`\n` +
+        `订阅层级: \`${currentSettings?.tier || "free"}\`\n` +
+        `已启用技能: ${(currentSettings?.enabledSkills || []).map(s => `\`${s}\``).join(", ") || "无"}\n\n` +
+        `使用 \`/skills list\` 查看所有可用技能`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (interaction.commandName === "skills") {
+    const guildId = interaction.guildId;
+    if (!guildId) {
+      await interaction.reply({ content: "This command can only be used in a guild.", ephemeral: true });
+      return;
+    }
+
+    if (!registry) {
+      await interaction.reply({ content: "Skill registry not available.", ephemeral: true });
+      return;
+    }
+
+    const subcommand = interaction.options.getSubcommand();
+    const settings = await getOrCreateGuildSettings(guildId);
+    const allSkills = registry.getAll();
+
+    switch (subcommand) {
+      case "list": {
+        const lines = allSkills.map((skill) => {
+          const enabled = settings.enabledSkills.includes(skill.id);
+          const tierBadge = skill.tier === "premium" ? "💎" : "🆓";
+          const statusBadge = enabled ? "✅" : "⬜";
+          const canUse = registry.canUseSkill(skill, settings.tier);
+          const lockBadge = canUse ? "" : "🔒";
+          return `${statusBadge} ${tierBadge} **${skill.name}** ${lockBadge}\n   ${skill.description}`;
+        });
+
+        await interaction.reply({
+          content: `**Haven Skills**\n\n${lines.join("\n\n")}\n\n` +
+            `使用 \`/skills enable <skill>\` 或 \`/skills disable <skill>\` 管理技能`,
+          ephemeral: true,
+        });
+        return;
+      }
+
+      case "enable": {
+        const skillId = interaction.options.getString("skill", true);
+        const skill = registry.get(skillId);
+
+        if (!skill) {
+          await interaction.reply({ content: `未知技能: ${skillId}`, ephemeral: true });
+          return;
+        }
+
+        if (!registry.canUseSkill(skill, settings.tier)) {
+          await interaction.reply({
+            content: `技能 **${skill.name}** 需要 Premium 订阅`,
+            ephemeral: true,
+          });
+          return;
+        }
+
+        await enableSkill(guildId, skillId);
+        await interaction.reply({
+          content: `✅ 已启用技能: **${skill.name}**`,
+          ephemeral: true,
+        });
+        return;
+      }
+
+      case "disable": {
+        const skillId = interaction.options.getString("skill", true);
+        const skill = registry.get(skillId);
+
+        if (!skill) {
+          await interaction.reply({ content: `未知技能: ${skillId}`, ephemeral: true });
+          return;
+        }
+
+        await disableSkill(guildId, skillId);
+        await interaction.reply({
+          content: `⬜ 已禁用技能: **${skill.name}**`,
+          ephemeral: true,
+        });
+        return;
+      }
+    }
     return;
   }
 
