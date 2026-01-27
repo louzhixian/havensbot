@@ -10,7 +10,8 @@ import { startSchedulers } from "./scheduler.js";
 // Editorial handlers migrated to editorialSkill
 // import { registerEditorialDiscussionHandlers } from "./editorial-discussion.js";
 // import { registerEditorialTranslationHandlers } from "./editorial-translation.js";
-import { registerDiaryMessageHandler, registerDiaryButtonHandler } from "./diary/handler.js";
+// Diary handlers migrated to diarySkill
+// import { registerDiaryMessageHandler, registerDiaryButtonHandler } from "./diary/handler.js";
 // Legacy readings handlers (migrated to readingsSkill)
 // import {
 //   registerReadingsReactionHandler,
@@ -28,6 +29,7 @@ import {
 import { logger } from "./observability/logger.js";
 import {
   SkillRegistry,
+  diarySkill,
   digestSkill,
   editorialSkill,
   favoritesSkill,
@@ -51,6 +53,7 @@ const main = async (): Promise<void> => {
   };
 
   const registry = new SkillRegistry(skillCtx);
+  registry.register(diarySkill);
   registry.register(digestSkill);
   registry.register(editorialSkill);
   registry.register(favoritesSkill);
@@ -148,8 +151,9 @@ const main = async (): Promise<void> => {
   // registerEditorialDiscussionHandlers(client, config);
   // registerEditorialTranslationHandlers(client, config);
   // Voice handler migrated to voiceSkill
-  registerDiaryMessageHandler(client, config);
-  registerDiaryButtonHandler(client, config);
+  // Diary handlers migrated to diarySkill
+  // registerDiaryMessageHandler(client, config);
+  // registerDiaryButtonHandler(client, config);
   // Readings handlers migrated to readingsSkill
   // registerReadingsReactionHandler(client, config);
   // registerReadingsButtonHandler(client, config);
