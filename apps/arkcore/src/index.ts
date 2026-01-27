@@ -7,8 +7,9 @@ import { disconnect, prisma } from "./db.js";
 import { registerFavoriteReactionHandler } from "./favorites.js";
 import { ingestAllSources } from "./rss.js";
 import { startSchedulers } from "./scheduler.js";
-import { registerEditorialDiscussionHandlers } from "./editorial-discussion.js";
-import { registerEditorialTranslationHandlers } from "./editorial-translation.js";
+// Editorial handlers migrated to editorialSkill
+// import { registerEditorialDiscussionHandlers } from "./editorial-discussion.js";
+// import { registerEditorialTranslationHandlers } from "./editorial-translation.js";
 import { registerDiaryMessageHandler, registerDiaryButtonHandler } from "./diary/handler.js";
 // Legacy readings handlers (migrated to readingsSkill)
 // import {
@@ -28,6 +29,7 @@ import { logger } from "./observability/logger.js";
 import {
   SkillRegistry,
   digestSkill,
+  editorialSkill,
   favoritesSkill,
   readingsSkill,
   voiceSkill,
@@ -50,6 +52,7 @@ const main = async (): Promise<void> => {
 
   const registry = new SkillRegistry(skillCtx);
   registry.register(digestSkill);
+  registry.register(editorialSkill);
   registry.register(favoritesSkill);
   registry.register(readingsSkill);
   registry.register(voiceSkill);
@@ -141,8 +144,9 @@ const main = async (): Promise<void> => {
 
   // Legacy handlers (will be migrated to skills later)
   registerFavoriteReactionHandler(client, config); // Keep for reaction remove handling
-  registerEditorialDiscussionHandlers(client, config);
-  registerEditorialTranslationHandlers(client, config);
+  // Editorial handlers migrated to editorialSkill
+  // registerEditorialDiscussionHandlers(client, config);
+  // registerEditorialTranslationHandlers(client, config);
   // Voice handler migrated to voiceSkill
   registerDiaryMessageHandler(client, config);
   registerDiaryButtonHandler(client, config);
