@@ -384,7 +384,7 @@ export const HAVENS_DEFAULT_TEMPLATE: TemplateStructure = {
   guildSettings: {
     timezone: "Asia/Tokyo",
     locale: "zh",
-    enabledSkills: ["digest", "favorites"],
+    enabledSkills: ["digest", "favorites", "voice", "readings", "editorial", "diary"],
   },
   categories: [
     {
@@ -415,6 +415,52 @@ export const HAVENS_DEFAULT_TEMPLATE: TemplateStructure = {
           role: "deep_dive_output",
           availableTags: [
             { name: "Analyzing", emoji: "🔍" },
+            { name: "Complete", emoji: "✅" },
+          ],
+        },
+      ],
+    },
+    {
+      name: "📚 阅读",
+      slug: "readings",
+      channels: [
+        {
+          name: "readings",
+          type: "forum",
+          role: "readings",
+          availableTags: [
+            { name: "Reading", emoji: "📖" },
+            { name: "Complete", emoji: "✅" },
+          ],
+        },
+      ],
+    },
+    {
+      name: "✍️ 编辑",
+      slug: "editorial",
+      channels: [
+        {
+          name: "editorial",
+          type: "forum",
+          role: "editorial",
+          availableTags: [
+            { name: "Translating", emoji: "🌐" },
+            { name: "Discussing", emoji: "💬" },
+            { name: "Complete", emoji: "✅" },
+          ],
+        },
+      ],
+    },
+    {
+      name: "📔 日记",
+      slug: "diary",
+      channels: [
+        {
+          name: "diary",
+          type: "forum",
+          role: "diary",
+          availableTags: [
+            { name: "In Progress", emoji: "✏️" },
             { name: "Complete", emoji: "✅" },
           ],
         },
