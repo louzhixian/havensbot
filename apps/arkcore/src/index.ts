@@ -1,8 +1,9 @@
 import "dotenv/config";
+import type { MessageReaction, User } from "discord.js";
 import { loadConfig } from "./config.js";
 import { handleInteraction } from "./commands.js";
 import { createClient, registerCommands } from "./discord.js";
-import { disconnect } from "./db.js";
+import { disconnect, prisma } from "./db.js";
 import { registerFavoriteReactionHandler } from "./favorites.js";
 import { ingestAllSources } from "./rss.js";
 import { startSchedulers } from "./scheduler.js";
@@ -22,11 +23,61 @@ import {
   setupAdminChannelPermissions,
 } from "./channel-config.js";
 import { logger } from "./observability/logger.js";
+import {
+  SkillRegistry,
+  digestSkill,
+  favoritesSkill,
+  type SkillContext,
+} from "./skills/index.js";
+import { getOrCreateGuildSettings } from "./guild-settings.js";
+import { registerGuildCreateHandler } from "./onboarding.js";
 
 const main = async (): Promise<void> => {
   const config = loadConfig();
   const client = createClient();
-  registerFavoriteReactionHandler(client, config);
+
+  // Initialize skill context and registry
+  const skillCtx: SkillContext = {
+    client,
+    db: prisma,
+    logger,
+  };
+
+  const registry = new SkillRegistry(skillCtx);
+  registry.register(digestSkill);
+  registry.register(favoritesSkill);
+
+  // Register skill reaction handlers (multi-tenant)
+  const reactionHandlers = registry.getAllReactionHandlers();
+  client.on("messageReactionAdd", async (reaction, user) => {
+    try {
+      const message = reaction.message.partial ? await reaction.message.fetch() : reaction.message;
+      if (!message.guild) return;
+
+      const settings = await getOrCreateGuildSettings(message.guild.id);
+      const enabledSkills = await registry.getEnabledForGuild(message.guild.id);
+      const enabledSkillIds = new Set(enabledSkills.map((s) => s.id));
+
+      const emojiName = reaction.emoji.name?.replace(/\uFE0F/g, "") ?? "";
+
+      for (const { skill, handler } of reactionHandlers) {
+        if (!enabledSkillIds.has(skill.id)) continue;
+
+        const emojis = Array.isArray(handler.emoji) ? handler.emoji : [handler.emoji];
+        if (emojis.includes(emojiName)) {
+          await handler.execute(skillCtx, reaction as MessageReaction, user as User, settings);
+        }
+      }
+    } catch (error) {
+      logger.error({ error }, "Skill reaction handler failed");
+    }
+  });
+
+  // Register onboarding handler for new guilds
+  registerGuildCreateHandler(client);
+
+  // Legacy handlers (will be migrated to skills later)
+  registerFavoriteReactionHandler(client, config); // Keep for reaction remove handling
   registerEditorialDiscussionHandlers(client, config);
   registerEditorialTranslationHandlers(client, config);
   registerVoiceHandler(client, config);
@@ -40,7 +91,7 @@ const main = async (): Promise<void> => {
     if (!interaction.isChatInputCommand()) return;
 
     try {
-      await handleInteraction(interaction, config, client);
+      await handleInteraction(interaction, config, client, registry);
     } catch (error) {
       console.error("interaction handler failed", error);
       if (interaction.isRepliable()) {
@@ -57,29 +108,37 @@ const main = async (): Promise<void> => {
   client.once("ready", async () => {
     console.log(`Logged in as ${client.user?.tag}`);
 
-    // 初始化固定 channel
-    const guild = client.guilds.cache.get(config.discordGuildId);
-    if (guild) {
-      const adminChannelId = await findFixedChannel(guild, ADMIN_CHANNEL_NAME);
-      const alertsChannelId = await findFixedChannel(guild, ALERTS_CHANNEL_NAME);
+    // Initialize GuildSettings for all guilds bot is already in
+    for (const [guildId, guild] of client.guilds.cache) {
+      await getOrCreateGuildSettings(guildId);
+      logger.info({ guildId, guildName: guild.name }, "Initialized GuildSettings");
+    }
 
-      if (adminChannelId) {
-        await setupAdminChannelPermissions(guild, adminChannelId);
-        logger.info({ channelId: adminChannelId }, "Admin channel initialized");
-      } else {
-        logger.warn(`Admin channel #${ADMIN_CHANNEL_NAME} not found`);
-      }
+    // 初始化固定 channel (legacy, per-guild)
+    if (config.discordGuildId) {
+      const guild = client.guilds.cache.get(config.discordGuildId);
+      if (guild) {
+        const adminChannelId = await findFixedChannel(guild, ADMIN_CHANNEL_NAME);
+        const alertsChannelId = await findFixedChannel(guild, ALERTS_CHANNEL_NAME);
 
-      if (alertsChannelId) {
-        await setupAdminChannelPermissions(guild, alertsChannelId);
-        logger.info({ channelId: alertsChannelId }, "Alerts channel initialized");
-      } else {
-        logger.warn(`Alerts channel #${ALERTS_CHANNEL_NAME} not found`);
+        if (adminChannelId) {
+          await setupAdminChannelPermissions(guild, adminChannelId);
+          logger.info({ channelId: adminChannelId }, "Admin channel initialized");
+        } else {
+          logger.warn(`Admin channel #${ADMIN_CHANNEL_NAME} not found`);
+        }
+
+        if (alertsChannelId) {
+          await setupAdminChannelPermissions(guild, alertsChannelId);
+          logger.info({ channelId: alertsChannelId }, "Alerts channel initialized");
+        } else {
+          logger.warn(`Alerts channel #${ALERTS_CHANNEL_NAME} not found`);
+        }
       }
     }
 
     await ingestAllSources(config);
-    startSchedulers(config, client);
+    startSchedulers(config, client, registry, skillCtx);
   });
 
   await registerCommands(config);
