@@ -18,6 +18,8 @@ import { runArchivalProcess } from "./archival/archiver.js";
 import { logger } from "./observability/logger.js";
 import { checkTimeoutSessions, createDailyDiaryPost } from "./diary/session.js";
 import { createLlmClient } from "./llm/client.js";
+import { getAllGuildSettings, getSkillConfig } from "./guild-settings.js";
+import type { SkillRegistry, SkillContext } from "./skills/index.js";
 
 /**
  * Process digest for a single channel (non-forum mode)
@@ -63,7 +65,82 @@ const formatDigestDate = (date: Date, timeZone: string): string => {
   }).format(date);
 };
 
-export const startSchedulers = (config: AppConfig, client: Client): void => {
+/**
+ * Check if cron expression matches current time (minute-level)
+ */
+const shouldRunNow = (cronExpr: string, timezone: string): boolean => {
+  try {
+    const now = new Date();
+    const options: Intl.DateTimeFormatOptions = {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    };
+    const timeStr = new Intl.DateTimeFormat("en-US", options).format(now);
+    const [hour, minute] = timeStr.split(":").map(Number);
+
+    // Parse cron (simple: minute hour * * *)
+    const parts = cronExpr.split(" ");
+    if (parts.length < 5) return false;
+
+    const cronMinute = parts[0] === "*" ? minute : parseInt(parts[0], 10);
+    const cronHour = parts[1] === "*" ? hour : parseInt(parts[1], 10);
+
+    return cronMinute === minute && cronHour === hour;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Run skill cron jobs for all guilds
+ */
+const runSkillCronJobs = async (
+  registry: SkillRegistry,
+  ctx: SkillContext
+): Promise<void> => {
+  const guilds = await getAllGuildSettings();
+  const cronJobs = registry.getAllCronJobs();
+
+  for (const guildSettings of guilds) {
+    const enabledSkills = await registry.getEnabledForGuild(guildSettings.guildId);
+    const enabledSkillIds = new Set(enabledSkills.map((s) => s.id));
+
+    for (const { skill, job } of cronJobs) {
+      if (!enabledSkillIds.has(skill.id)) continue;
+
+      const cronExpr = getSkillConfig(
+        guildSettings,
+        skill.id,
+        job.configKey,
+        job.defaultCron
+      );
+
+      if (shouldRunNow(cronExpr, guildSettings.timezone)) {
+        try {
+          ctx.logger.info(
+            { guildId: guildSettings.guildId, skillId: skill.id, jobId: job.id },
+            "Running skill cron job"
+          );
+          await job.execute(ctx, guildSettings.guildId, guildSettings);
+        } catch (error) {
+          ctx.logger.error(
+            { error, guildId: guildSettings.guildId, skillId: skill.id, jobId: job.id },
+            "Skill cron job failed"
+          );
+        }
+      }
+    }
+  }
+};
+
+export const startSchedulers = (
+  config: AppConfig,
+  client: Client,
+  registry?: SkillRegistry,
+  skillCtx?: SkillContext
+): void => {
   let fetching = false;
   let digesting = false;
 
@@ -344,5 +421,21 @@ export const startSchedulers = (config: AppConfig, client: Client): void => {
       },
       { timezone: config.tz, recoverMissedExecutions: false }
     );
+  }
+
+  // Skill-based cron polling (multi-tenant)
+  if (registry && skillCtx) {
+    cron.schedule(
+      "* * * * *", // Every minute
+      async () => {
+        try {
+          await runSkillCronJobs(registry, skillCtx);
+        } catch (error) {
+          logger.error({ error }, "Skill cron polling failed");
+        }
+      },
+      { timezone: config.tz, recoverMissedExecutions: false }
+    );
+    logger.info("Skill cron polling scheduled (every minute)");
   }
 };
