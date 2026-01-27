@@ -13,44 +13,16 @@ import { createDeepDiveForumPost } from "../deep-dive-forum.js";
 import { splitMessageContent } from "../messaging.js";
 import { sleep } from "../utils.js";
 import { loadConfig } from "../config.js";
+import { markForwarded, wasForwarded } from "../favorites.js";
 
 const HEART_EMOJIS = ["❤", "♥"];
 const EYES_EMOJIS = ["👀"];
 const MAX_FORWARD_CACHE = 1000;
 
-const forwardedMessages = new Map<
-  string,
-  { forwardedId: string; channelId: string; createdAt: number }
->();
 const deeperMessages = new Map<
   string,
   { forwardedId: string; channelId: string; threadId: string; createdAt: number }
 >();
-
-const normalizeEmoji = (value: string | null): string => {
-  if (!value) return "";
-  return value.replace(/\uFE0F/g, "");
-};
-
-const wasForwarded = (messageId: string): boolean =>
-  forwardedMessages.has(messageId);
-
-const markForwarded = (
-  messageId: string,
-  forwardedId: string,
-  channelId: string
-): void => {
-  forwardedMessages.set(messageId, {
-    forwardedId,
-    channelId,
-    createdAt: Date.now(),
-  });
-  if (forwardedMessages.size <= MAX_FORWARD_CACHE) return;
-  const oldest = forwardedMessages.keys().next().value;
-  if (oldest) {
-    forwardedMessages.delete(oldest);
-  }
-};
 
 const markDeeperForwarded = (
   messageId: string,
@@ -103,8 +75,9 @@ const forwardMessage = async (
     return forwarder.call(message, channel);
   }
 
-  const files = message.attachments.map((attachment) => attachment.url);
-  return channel.send({
+  const files = message.attachments.map((attachment: { url: string }) => attachment.url);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (channel as any).send({
     content: message.content || undefined,
     embeds: message.embeds,
     files,

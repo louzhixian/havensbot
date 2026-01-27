@@ -18,12 +18,19 @@ export interface ChannelPermission {
   deny?: string[];
 }
 
+export interface ForumTag {
+  name: string;
+  moderated?: boolean;
+  emoji?: string; // Unicode emoji or custom emoji name
+}
+
 export interface TemplateChannel {
   name: string;
   type: "text" | "forum" | "voice" | "announcement";
   role?: string; // ChannelConfigRole
   permissions?: ChannelPermission[];
   topic?: string;
+  availableTags?: ForumTag[]; // Forum channel tags
 }
 
 export interface TemplateCategory {
@@ -118,7 +125,7 @@ export const applyTemplate = async (
     return result;
   }
 
-  const structure = template.structure as TemplateStructure;
+  const structure = template.structure as unknown as TemplateStructure;
   const guildId = guild.id;
 
   // Apply guild settings if specified
@@ -233,12 +240,22 @@ export const applyTemplate = async (
             }
           }
 
+          // Build availableTags for forum channels
+          const availableTags = channelDef.availableTags?.map((tag) => ({
+            name: tag.name,
+            moderated: tag.moderated ?? false,
+            emoji: tag.emoji ? { id: null, name: tag.emoji } : null,
+          }));
+
           const newChannel = await guild.channels.create({
             name: channelDef.name,
-            type: channelType,
+            type: channelType as ChannelType.GuildText | ChannelType.GuildVoice | ChannelType.GuildForum | ChannelType.GuildAnnouncement,
             parent: categoryId,
             topic: channelDef.topic,
             permissionOverwrites: permissionOverwrites.length > 0 ? permissionOverwrites : undefined,
+            ...(channelType === ChannelType.GuildForum && availableTags?.length
+              ? { availableTags }
+              : {}),
           });
 
           result.channelsCreated++;
@@ -284,9 +301,25 @@ export const HAVENS_DEFAULT_TEMPLATE: TemplateStructure = {
       name: "📋 输出",
       slug: "outputs",
       channels: [
-        { name: "daily-digest", type: "forum", role: "digest_output" },
+        {
+          name: "daily-digest",
+          type: "forum",
+          role: "digest_output",
+          availableTags: [
+            { name: "📊 Digesting", emoji: "📊" },
+            { name: "✅ Complete", emoji: "✅" },
+          ],
+        },
         { name: "favorites", type: "text", role: "favorites" },
-        { name: "deep-dive", type: "forum", role: "deep_dive_output" },
+        {
+          name: "deep-dive",
+          type: "forum",
+          role: "deep_dive_output",
+          availableTags: [
+            { name: "🔍 Analyzing", emoji: "🔍" },
+            { name: "✅ Complete", emoji: "✅" },
+          ],
+        },
       ],
     },
     {
