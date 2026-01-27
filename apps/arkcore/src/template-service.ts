@@ -404,8 +404,8 @@ export const HAVENS_DEFAULT_TEMPLATE: TemplateStructure = {
           type: "forum",
           role: "digest_output",
           availableTags: [
-            { name: "📊 Digesting", emoji: "📊" },
-            { name: "✅ Complete", emoji: "✅" },
+            { name: "Digesting", emoji: "📊" },
+            { name: "Complete", emoji: "✅" },
           ],
         },
         { name: "favorites", type: "text", role: "favorites" },
@@ -414,8 +414,8 @@ export const HAVENS_DEFAULT_TEMPLATE: TemplateStructure = {
           type: "forum",
           role: "deep_dive_output",
           availableTags: [
-            { name: "🔍 Analyzing", emoji: "🔍" },
-            { name: "✅ Complete", emoji: "✅" },
+            { name: "Analyzing", emoji: "🔍" },
+            { name: "Complete", emoji: "✅" },
           ],
         },
       ],
