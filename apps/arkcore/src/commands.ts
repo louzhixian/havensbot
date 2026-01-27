@@ -467,6 +467,18 @@ export const commandData = [
         .setName("reset")
         .setDescription("⚠️ Delete all bot-managed channels and configs (for testing)")
     ),
+  new SlashCommandBuilder()
+    .setName("init")
+    .setDescription("初始化 Haven - 快速搭建频道结构")
+    .addStringOption((option) =>
+      option
+        .setName("template")
+        .setDescription("选择模板（默认: havens-default）")
+        .setRequired(false)
+    ),
+  new SlashCommandBuilder()
+    .setName("help")
+    .setDescription("显示帮助信息和常用命令"),
 ].map((command) => command.toJSON());
 
 export const handleInteraction = async (
@@ -1360,6 +1372,132 @@ export const handleInteraction = async (
       await interaction.editReply({ content: message });
       return;
     }
+    return;
+  }
+
+  if (interaction.commandName === "init") {
+    const guildId = interaction.guildId;
+    const guild = interaction.guild;
+    if (!guildId || !guild) {
+      await interaction.reply({ content: "此命令只能在服务器中使用。", ephemeral: true });
+      return;
+    }
+
+    // Check permissions
+    const member = interaction.member;
+    if (!member || typeof member.permissions === "string" || !member.permissions.has("ManageChannels")) {
+      await interaction.reply({
+        content: "你需要 **管理频道** 权限才能使用此命令。",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const templateName = interaction.options.getString("template") || "havens-default";
+
+    await interaction.deferReply();
+
+    // List available templates first if no template specified
+    const templates = await listTemplates();
+    if (templates.length === 0) {
+      await interaction.editReply({
+        content: "❌ 没有可用的模板。请联系管理员。",
+      });
+      return;
+    }
+
+    // Check if template exists
+    const templateExists = templates.some((t) => t.name === templateName);
+    if (!templateExists) {
+      const templateList = templates.map((t) => `• \`${t.name}\` - ${t.description}`).join("\n");
+      await interaction.editReply({
+        content: `❌ 模板 \`${templateName}\` 不存在。\n\n**可用模板：**\n${templateList}\n\n请使用 \`/init template:模板名\` 重试。`,
+      });
+      return;
+    }
+
+    // Apply template
+    const result = await applyTemplate(guild, templateName);
+
+    if (!result.success && result.errors.length > 0 && result.categoriesCreated === 0 && result.channelsCreated === 0) {
+      await interaction.editReply({
+        content: `❌ 初始化失败\n\n**错误**:\n${result.errors.map((e) => `• ${e}`).join("\n")}`,
+      });
+      return;
+    }
+
+    let message = `🎉 **Haven 初始化完成！**\n\n`;
+    message += `已应用模板: **${templateName}**\n`;
+    message += `创建了 ${result.categoriesCreated} 个分类、${result.channelsCreated} 个频道\n\n`;
+
+    message += `**下一步：**\n`;
+    message += `1. 前往信息源频道（如 #tech-news）\n`;
+    message += `2. 使用 \`/source add rss url:订阅地址\` 添加 RSS 源\n`;
+    message += `3. 使用 \`/fetch now\` 抓取最新内容\n`;
+    message += `4. 使用 \`/digest run\` 生成摘要\n\n`;
+    message += `💡 提示：使用 \`/help\` 查看所有可用命令`;
+
+    if (result.skipped.length > 0) {
+      message += `\n\n**已跳过** (已存在的频道):\n${result.skipped.slice(0, 3).map((s) => `• ${s}`).join("\n")}`;
+      if (result.skipped.length > 3) {
+        message += `\n• ...还有 ${result.skipped.length - 3} 项`;
+      }
+    }
+
+    await interaction.editReply({ content: message });
+    return;
+  }
+
+  if (interaction.commandName === "help") {
+    const helpMessage = `# 📚 Haven 帮助
+
+## 🚀 快速开始
+\`/init\` - 一键初始化服务器结构
+\`/setup\` - 配置时区和语言
+\`/skills list\` - 查看可用技能
+
+## 📰 信息源管理
+\`/source add rss url:订阅地址\` - 添加 RSS 订阅
+\`/source add others url:网址\` - 添加 GitHub 等其他源
+\`/source list\` - 列出当前频道的订阅源
+\`/source remove url:订阅地址\` - 移除订阅源
+
+## 📊 内容处理
+\`/fetch now\` - 抓取当前频道的订阅内容
+\`/fetch all\` - 抓取所有频道的订阅内容
+\`/digest run\` - 生成当前频道的每日摘要
+
+## ⚙️ 配置管理
+\`/config digest add-category\` - 添加摘要源分类
+\`/config digest set-output\` - 设置摘要输出频道
+\`/config list\` - 列出所有配置
+\`/template list\` - 列出可用模板
+\`/template apply name:模板名\` - 应用模板
+
+## 📈 系统监控
+\`/stats overview\` - 系统统计概览
+\`/stats health\` - 健康检查
+\`/alerts list\` - 查看活动告警
+
+## 💡 常用工作流
+
+**日常使用：**
+订阅内容会自动抓取并在指定时间生成摘要
+
+**添加新信息源：**
+1. 进入目标频道 → \`/source add rss url:...\`
+2. \`/fetch now\` 立即抓取
+
+**查看摘要：**
+摘要会自动发布到配置的 digest 论坛频道
+
+---
+*更多帮助：https://havens.bot/docs*`;
+
+    await interaction.reply({
+      content: helpMessage,
+      ephemeral: true,
+    });
     return;
   }
 
