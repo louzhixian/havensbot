@@ -218,3 +218,14 @@ model GuildSettings {
 
   @@index([tier])
 }
+
+model GuildTemplate {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String
+  structure   Json     // Template structure (categories, channels, roles)
+  isBuiltin   Boolean  @default(false)
+  createdBy   String?  // guildId, null for builtin templates
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
