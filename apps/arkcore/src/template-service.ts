@@ -247,16 +247,23 @@ export const applyTemplate = async (
             emoji: tag.emoji ? { id: null, name: tag.emoji } : null,
           }));
 
+          // Check if this is a forum channel by type string
+          const isForum = channelDef.type === "forum";
+
           const newChannel = await guild.channels.create({
             name: channelDef.name,
             type: channelType as ChannelType.GuildText | ChannelType.GuildVoice | ChannelType.GuildForum | ChannelType.GuildAnnouncement,
             parent: categoryId,
             topic: channelDef.topic,
             permissionOverwrites: permissionOverwrites.length > 0 ? permissionOverwrites : undefined,
-            ...(channelType === ChannelType.GuildForum && availableTags?.length
+            ...(isForum && availableTags?.length
               ? { availableTags }
               : {}),
           });
+
+          if (isForum && availableTags?.length) {
+            logger.info({ guildId, channelName: channelDef.name, tagsCount: availableTags.length }, "Created forum with tags");
+          }
 
           result.channelsCreated++;
           logger.info({ guildId, channelName: channelDef.name }, "Created channel");
