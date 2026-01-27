@@ -13,6 +13,7 @@ import {
   disableSkill,
 } from "./guild-settings.js";
 import type { SkillRegistry } from "./skills/index.js";
+import { listTemplates, applyTemplate } from "./template-service.js";
 import { AppConfig } from "./config.js";
 import {
   ADMIN_CHANNEL_NAME,
@@ -441,6 +442,23 @@ export const commandData = [
           option
             .setName("skill")
             .setDescription("Skill to disable")
+            .setRequired(true)
+        )
+    ),
+  new SlashCommandBuilder()
+    .setName("template")
+    .setDescription("Manage guild structure templates")
+    .addSubcommand((sub) =>
+      sub.setName("list").setDescription("List available templates")
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("apply")
+        .setDescription("Apply a template to this guild")
+        .addStringOption((option) =>
+          option
+            .setName("name")
+            .setDescription("Template name (e.g., havens-default)")
             .setRequired(true)
         )
     ),
@@ -1237,6 +1255,80 @@ export const handleInteraction = async (
         });
         return;
       }
+    }
+    return;
+  }
+
+  if (interaction.commandName === "template") {
+    const guildId = interaction.guildId;
+    const guild = interaction.guild;
+    if (!guildId || !guild) {
+      await interaction.reply({ content: "This command can only be used in a guild.", ephemeral: true });
+      return;
+    }
+
+    // Check permissions
+    const member = interaction.member;
+    if (!member || typeof member.permissions === "string" || !member.permissions.has("ManageChannels")) {
+      await interaction.reply({
+        content: "You need **Manage Channels** permission to use this command.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const subcommand = interaction.options.getSubcommand();
+
+    if (subcommand === "list") {
+      await interaction.deferReply({ ephemeral: true });
+
+      const templates = await listTemplates();
+      if (templates.length === 0) {
+        await interaction.editReply({ content: "No templates available." });
+        return;
+      }
+
+      const lines = templates.map((t) => {
+        const badge = t.isBuiltin ? "📦" : "👤";
+        return `${badge} **${t.name}**\n   ${t.description}`;
+      });
+
+      await interaction.editReply({
+        content: `**Available Templates**\n\n${lines.join("\n\n")}\n\n使用 \`/template apply <name>\` 应用模板`,
+      });
+      return;
+    }
+
+    if (subcommand === "apply") {
+      const templateName = interaction.options.getString("name", true);
+
+      await interaction.deferReply();
+
+      const result = await applyTemplate(guild, templateName);
+
+      if (!result.success && result.errors.length > 0 && result.categoriesCreated === 0 && result.channelsCreated === 0) {
+        await interaction.editReply({
+          content: `❌ 应用模板失败\n\n**错误**:\n${result.errors.map((e) => `• ${e}`).join("\n")}`,
+        });
+        return;
+      }
+
+      let message = `✅ 模板 **${templateName}** 应用完成\n\n`;
+      message += `**创建**: ${result.categoriesCreated} 个分类, ${result.channelsCreated} 个频道, ${result.configsCreated} 个配置\n`;
+
+      if (result.skipped.length > 0) {
+        message += `\n**跳过** (已存在):\n${result.skipped.slice(0, 5).map((s) => `• ${s}`).join("\n")}`;
+        if (result.skipped.length > 5) {
+          message += `\n• ...还有 ${result.skipped.length - 5} 项`;
+        }
+      }
+
+      if (result.errors.length > 0) {
+        message += `\n\n**错误**:\n${result.errors.slice(0, 3).map((e) => `• ${e}`).join("\n")}`;
+      }
+
+      await interaction.editReply({ content: message });
+      return;
     }
     return;
   }
