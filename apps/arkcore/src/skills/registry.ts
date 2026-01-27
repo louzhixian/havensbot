@@ -1,4 +1,4 @@
-import type { Skill, SkillCommand, ReactionHandler, MessageHandler, SkillCronJob, SkillContext } from "./types.js";
+import type { Skill, SkillCommand, ReactionHandler, ButtonHandler, MessageHandler, SkillCronJob, SkillContext } from "./types.js";
 
 export class SkillRegistry {
   private skills = new Map<string, Skill>();
@@ -61,6 +61,12 @@ export class SkillRegistry {
   getAllMessageHandlers(): Array<{ skill: Skill; handler: MessageHandler }> {
     return this.getAll().flatMap((s) =>
       (s.messages ?? []).map((h) => ({ skill: s, handler: h }))
+    );
+  }
+
+  getAllButtonHandlers(): Array<{ skill: Skill; handler: ButtonHandler }> {
+    return this.getAll().flatMap((s) =>
+      (s.buttons ?? []).map((h) => ({ skill: s, handler: h }))
     );
   }
 }

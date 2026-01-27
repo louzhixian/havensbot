@@ -10,11 +10,12 @@ import { startSchedulers } from "./scheduler.js";
 import { registerEditorialDiscussionHandlers } from "./editorial-discussion.js";
 import { registerEditorialTranslationHandlers } from "./editorial-translation.js";
 import { registerDiaryMessageHandler, registerDiaryButtonHandler } from "./diary/handler.js";
-import {
-  registerReadingsReactionHandler,
-  registerReadingsButtonHandler,
-  registerReadingsMessageHandler,
-} from "./readings.js";
+// Legacy readings handlers (migrated to readingsSkill)
+// import {
+//   registerReadingsReactionHandler,
+//   registerReadingsButtonHandler,
+//   registerReadingsMessageHandler,
+// } from "./readings.js";
 import {
   ADMIN_CHANNEL_NAME,
   ALERTS_CHANNEL_NAME,
@@ -28,6 +29,7 @@ import {
   SkillRegistry,
   digestSkill,
   favoritesSkill,
+  readingsSkill,
   voiceSkill,
   type SkillContext,
 } from "./skills/index.js";
@@ -49,6 +51,7 @@ const main = async (): Promise<void> => {
   const registry = new SkillRegistry(skillCtx);
   registry.register(digestSkill);
   registry.register(favoritesSkill);
+  registry.register(readingsSkill);
   registry.register(voiceSkill);
 
   // Register skill reaction handlers (multi-tenant)
@@ -109,6 +112,30 @@ const main = async (): Promise<void> => {
     }
   });
 
+  // Register skill button handlers (multi-tenant)
+  const buttonHandlers = registry.getAllButtonHandlers();
+  client.on("interactionCreate", async (interaction) => {
+    if (!interaction.isButton()) return;
+    if (!interaction.guild) return;
+
+    try {
+      const settings = await getOrCreateGuildSettings(interaction.guild.id);
+      const enabledSkills = await registry.getEnabledForGuild(interaction.guild.id);
+      const enabledSkillIds = new Set(enabledSkills.map((s) => s.id));
+
+      for (const { skill, handler } of buttonHandlers) {
+        if (!enabledSkillIds.has(skill.id)) continue;
+
+        if (interaction.customId.startsWith(handler.customIdPrefix)) {
+          await handler.execute(skillCtx, interaction, settings);
+          return; // Only one handler per button
+        }
+      }
+    } catch (error) {
+      logger.error({ error }, "Skill button handler failed");
+    }
+  });
+
   // Register onboarding handler for new guilds
   registerGuildCreateHandler(client);
 
@@ -119,9 +146,10 @@ const main = async (): Promise<void> => {
   // Voice handler migrated to voiceSkill
   registerDiaryMessageHandler(client, config);
   registerDiaryButtonHandler(client, config);
-  registerReadingsReactionHandler(client, config);
-  registerReadingsButtonHandler(client, config);
-  registerReadingsMessageHandler(client, config);
+  // Readings handlers migrated to readingsSkill
+  // registerReadingsReactionHandler(client, config);
+  // registerReadingsButtonHandler(client, config);
+  // registerReadingsMessageHandler(client, config);
 
   client.on("interactionCreate", async (interaction) => {
     if (!interaction.isChatInputCommand()) return;

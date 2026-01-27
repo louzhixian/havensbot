@@ -4,6 +4,7 @@ import type {
   MessageReaction,
   User,
   ApplicationCommandOptionData,
+  ButtonInteraction,
 } from "discord.js";
 import type { PrismaClient, GuildSettings } from "@prisma/client";
 import type { Logger } from "pino";
@@ -49,6 +50,16 @@ export interface MessageHandler {
   ) => Promise<void>;
 }
 
+export interface ButtonHandler {
+  /** Custom ID prefix to match (e.g., "readings_toggle_") */
+  customIdPrefix: string;
+  execute: (
+    ctx: SkillContext,
+    interaction: ButtonInteraction,
+    guildSettings: GuildSettings
+  ) => Promise<void>;
+}
+
 export interface SkillCronJob {
   id: string;
   defaultCron: string;
@@ -74,6 +85,7 @@ export interface Skill {
   // Capabilities (optional)
   commands?: SkillCommand[];
   reactions?: ReactionHandler[];
+  buttons?: ButtonHandler[];
   messages?: MessageHandler[];
   cron?: SkillCronJob[];
   channelRoles?: string[];
