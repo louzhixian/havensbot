@@ -316,8 +316,10 @@ export const resetGuild = async (
 
   // Delete managed channels
   for (const config of configs) {
+    if (!config.channelId) continue;
+    const channelId = config.channelId;
     try {
-      const channel = await guild.channels.fetch(config.channelId).catch(() => null);
+      const channel = await guild.channels.fetch(channelId).catch(() => null);
       if (channel) {
         // Track parent category for later deletion
         if (channel.parentId) {
@@ -325,10 +327,10 @@ export const resetGuild = async (
         }
         await channel.delete("Template reset");
         result.channelsDeleted++;
-        logger.info({ guildId, channelId: config.channelId }, "Deleted channel");
+        logger.info({ guildId, channelId }, "Deleted channel");
       }
     } catch (error) {
-      result.errors.push(`Failed to delete channel ${config.channelId}: ${error}`);
+      result.errors.push(`Failed to delete channel ${channelId}: ${error}`);
     }
   }
 
