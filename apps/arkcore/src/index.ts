@@ -31,6 +31,7 @@ import {
 } from "./skills/index.js";
 import { getOrCreateGuildSettings } from "./guild-settings.js";
 import { registerGuildCreateHandler } from "./onboarding.js";
+import { seedBuiltinTemplates } from "./template-service.js";
 
 const main = async (): Promise<void> => {
   const config = loadConfig();
@@ -113,6 +114,9 @@ const main = async (): Promise<void> => {
       await getOrCreateGuildSettings(guildId);
       logger.info({ guildId, guildName: guild.name }, "Initialized GuildSettings");
     }
+
+    // Seed builtin templates
+    await seedBuiltinTemplates();
 
     // 初始化固定 channel (legacy, per-guild)
     if (config.discordGuildId) {
