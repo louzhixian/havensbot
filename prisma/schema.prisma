@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SourceType {
+  RSS
+}
+
+enum ContentQuality {
+  title_only
+  snippet
+  fulltext
+}
+
+enum EditorialReportStatus {
+  success
+  failed
+}
+
+enum MetricType {
+  llm_call
+  rss_fetch
+  digest_run
+  editorial_run
+  deeper_run
+  whisper_transcribe
+  error
+  discord_message
+  system
+}
+
+enum MetricStatus {
+  success
+  failure
+  degraded
+}
+
+enum AlertType {
+  llm_failure_rate
+  llm_cost_high
+  llm_token_limit
+  storage_warning
+  rss_failure
+  digest_failure
+  editorial_failure
+}
+
+enum AlertSeverity {
+  info
+  warning
+  error
+  critical
+}
+
+model Source {
+  id            String     @id @default(cuid())
+  channelId     String
+  type          SourceType
+  name          String
+  url           String
+  enabled       Boolean    @default(true)
+  etag          String?
+  lastModified  String?
+  lastFetchedAt DateTime?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  items         Item[]
+
+  @@unique([channelId, type, url])
+}
+
+model Item {
+  id                  String          @id @default(cuid())
+  sourceId            String
+  title               String
+  url                 String
+  publishedAt         DateTime?
+  contentSnippet      String?
+  contentHash         String
+  contentQuality      ContentQuality?
+  writingSuggestions  Json?
+  enrichedAt          DateTime?
+  enrichErrorReason   String?
+  deepDive            String?         @db.Text
+  deepDiveAt          DateTime?
+  deepDiveErrorReason String?
+  archivedAt          DateTime?
+  createdAt           DateTime        @default(now())
+  source              Source          @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, contentHash])
+  @@index([createdAt])
+  @@index([archivedAt])
+  @@index([sourceId, createdAt])
+}
+
+model Digest {
+  id         String   @id @default(cuid())
+  channelId  String
+  rangeStart DateTime
+  rangeEnd   DateTime
+  content    String   @db.Text
+  createdAt  DateTime @default(now())
+}
+
+model EditorialReport {
+  id          String                @id @default(cuid())
+  channelId   String
+  windowStart DateTime
+  windowEnd   DateTime
+  status      EditorialReportStatus
+  content     String                @db.Text
+  meta        Json?
+  createdAt   DateTime              @default(now())
+}
+
+model ObservabilityMetric {
+  id        String       @id @default(cuid())
+  type      MetricType
+  operation String
+  status    MetricStatus
+  metadata  Json?
+  createdAt DateTime     @default(now())
+
+  @@index([type, createdAt])
+  @@index([status, createdAt])
+  @@index([operation, createdAt])
+}
+
+model SystemAlert {
+  id         String        @id @default(cuid())
+  alertType  AlertType
+  severity   AlertSeverity
+  message    String
+  metadata   Json?
+  resolved   Boolean       @default(false)
+  resolvedAt DateTime?
+  notifiedAt DateTime?
+  createdAt  DateTime      @default(now())
+
+  @@index([resolved, severity, createdAt])
+}
+
+model DiarySession {
+  id           String    @id @default(cuid())
+  date         DateTime  @db.Date
+  threadId     String    @unique
+  channelId    String
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+  endReason    String?
+  messageCount Int       @default(0)
+  exportPath   String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([date])
+  @@index([channelId])
+}
+
+enum ChannelConfigRole {
+  digest_source
+  digest_output
+  deep_dive_output
+  diary
+  favorites
+  editorial
+  readings
+}
+
+model ChannelConfig {
+  id           String            @id @default(cuid())
+  guildId      String
+  channelId    String?
+  categoryId   String?
+  role         ChannelConfigRole
+  digestCron   String?
+  digestFormat String?
+  enabled      Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([guildId, channelId, role])
+  @@unique([guildId, categoryId, role])
+  @@index([guildId, role])
+}
