@@ -69,7 +69,11 @@ const main = async (): Promise<void> => {
     select: { channelId: true },
     orderBy: { createdAt: "asc" },
   });
-  const channelId = channel?.channelId ?? config.discordGuildId;
+  const channelId = channel?.channelId ?? config.discordGuildId ?? "";
+  if (!channelId) {
+    console.log("verify: no channel found and GUILD_ID not set, skipping digest check");
+    return;
+  }
 
   const rangeEnd = new Date();
   const rangeStart = new Date(rangeEnd.getTime() - 24 * 60 * 60 * 1000);

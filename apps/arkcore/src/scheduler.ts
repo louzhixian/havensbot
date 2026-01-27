@@ -317,13 +317,13 @@ export const startSchedulers = (
   );
 
   // Daily diary forum post creation
-  if (config.diaryEnabled) {
+  if (config.diaryEnabled && config.discordGuildId) {
     cron.schedule(
       config.diaryCron,
       async () => {
         try {
           logger.info("Creating daily diary post");
-          const guild = client.guilds.cache.get(config.discordGuildId);
+          const guild = client.guilds.cache.get(config.discordGuildId!);
           if (!guild) {
             logger.warn("Guild not found for diary post creation");
             return;

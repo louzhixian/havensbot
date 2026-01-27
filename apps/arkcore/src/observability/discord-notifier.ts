@@ -11,6 +11,10 @@ import { ALERTS_CHANNEL_NAME, findFixedChannel } from "../channel-config.js";
  * Get the alerts channel ID by fixed channel name
  */
 async function getAlertsChannelId(client: Client, config: AppConfig): Promise<string | null> {
+  if (!config.discordGuildId) {
+    logger.debug("GUILD_ID not set, cannot get alerts channel");
+    return null;
+  }
   const guild = client.guilds.cache.get(config.discordGuildId);
   if (!guild) {
     logger.debug("Guild not found, cannot get alerts channel");
