@@ -252,14 +252,26 @@ export const applyTemplate = async (
           });
 
           // Set availableTags after creating forum channel
-          if (isForum && channelDef.availableTags?.length && "setAvailableTags" in newChannel) {
-            const tags = channelDef.availableTags.map((tag) => ({
-              name: tag.name,
-              moderated: tag.moderated ?? false,
-              emoji: tag.emoji ? { id: null, name: tag.emoji } : null,
-            }));
-            await (newChannel as any).setAvailableTags(tags, "Template apply");
-            logger.info({ guildId, channelName: channelDef.name, tagsCount: tags.length }, "Set forum tags");
+          if (isForum && channelDef.availableTags?.length) {
+            logger.info({ 
+              guildId, 
+              channelName: channelDef.name, 
+              channelType: newChannel.type,
+              hasSetAvailableTags: "setAvailableTags" in newChannel,
+              tagsCount: channelDef.availableTags.length 
+            }, "Attempting to set forum tags");
+            
+            try {
+              const tags = channelDef.availableTags.map((tag) => ({
+                name: tag.name,
+                moderated: tag.moderated ?? false,
+                emoji: tag.emoji ? { id: null, name: tag.emoji } : null,
+              }));
+              await (newChannel as any).setAvailableTags(tags, "Template apply");
+              logger.info({ guildId, channelName: channelDef.name, tagsCount: tags.length }, "Set forum tags SUCCESS");
+            } catch (tagError) {
+              logger.error({ guildId, channelName: channelDef.name, error: tagError }, "Failed to set forum tags");
+            }
           }
 
           result.channelsCreated++;
