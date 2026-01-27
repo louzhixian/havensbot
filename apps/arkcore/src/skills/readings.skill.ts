@@ -341,7 +341,9 @@ const readingsQAHandler: MessageHandler = {
     const llmClient = createLlmClient(config);
 
     // Show typing indicator
-    await message.channel.sendTyping();
+    if ('sendTyping' in message.channel) {
+      await message.channel.sendTyping();
+    }
 
     // Generate response
     const response = await generateReadingsResponse(
