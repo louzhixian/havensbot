@@ -9,7 +9,6 @@ import { ingestAllSources } from "./rss.js";
 import { startSchedulers } from "./scheduler.js";
 import { registerEditorialDiscussionHandlers } from "./editorial-discussion.js";
 import { registerEditorialTranslationHandlers } from "./editorial-translation.js";
-import { registerVoiceHandler } from "./voice/voiceHandler.js";
 import { registerDiaryMessageHandler, registerDiaryButtonHandler } from "./diary/handler.js";
 import {
   registerReadingsReactionHandler,
@@ -21,12 +20,15 @@ import {
   ALERTS_CHANNEL_NAME,
   findFixedChannel,
   setupAdminChannelPermissions,
+  getConfigByRole,
+  type ChannelConfigRole,
 } from "./channel-config.js";
 import { logger } from "./observability/logger.js";
 import {
   SkillRegistry,
   digestSkill,
   favoritesSkill,
+  voiceSkill,
   type SkillContext,
 } from "./skills/index.js";
 import { getOrCreateGuildSettings } from "./guild-settings.js";
@@ -47,6 +49,7 @@ const main = async (): Promise<void> => {
   const registry = new SkillRegistry(skillCtx);
   registry.register(digestSkill);
   registry.register(favoritesSkill);
+  registry.register(voiceSkill);
 
   // Register skill reaction handlers (multi-tenant)
   const reactionHandlers = registry.getAllReactionHandlers();
@@ -74,6 +77,38 @@ const main = async (): Promise<void> => {
     }
   });
 
+  // Register skill message handlers (multi-tenant)
+  const messageHandlers = registry.getAllMessageHandlers();
+  client.on("messageCreate", async (message) => {
+    try {
+      if (!message.guild) return;
+
+      const settings = await getOrCreateGuildSettings(message.guild.id);
+      const enabledSkills = await registry.getEnabledForGuild(message.guild.id);
+      const enabledSkillIds = new Set(enabledSkills.map((s) => s.id));
+
+      for (const { skill, handler } of messageHandlers) {
+        if (!enabledSkillIds.has(skill.id)) continue;
+
+        // Check channel role filter
+        if (handler.channelRole) {
+          const channelConfig = await getConfigByRole(
+            message.guild.id,
+            handler.channelRole as ChannelConfigRole
+          );
+          if (!channelConfig || channelConfig.channelId !== message.channelId) continue;
+        }
+
+        // Check custom filter
+        if (handler.filter && !handler.filter(message)) continue;
+
+        await handler.execute(skillCtx, message, settings);
+      }
+    } catch (error) {
+      logger.error({ error }, "Skill message handler failed");
+    }
+  });
+
   // Register onboarding handler for new guilds
   registerGuildCreateHandler(client);
 
@@ -81,7 +116,7 @@ const main = async (): Promise<void> => {
   registerFavoriteReactionHandler(client, config); // Keep for reaction remove handling
   registerEditorialDiscussionHandlers(client, config);
   registerEditorialTranslationHandlers(client, config);
-  registerVoiceHandler(client, config);
+  // Voice handler migrated to voiceSkill
   registerDiaryMessageHandler(client, config);
   registerDiaryButtonHandler(client, config);
   registerReadingsReactionHandler(client, config);

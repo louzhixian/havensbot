@@ -37,6 +37,18 @@ export interface ReactionHandler {
   ) => Promise<void>;
 }
 
+export interface MessageHandler {
+  /** Channel role to filter (e.g., "editorial"). If undefined, fires for all channels. */
+  channelRole?: string;
+  /** Filter function to determine if message should be handled */
+  filter?: (message: import("discord.js").Message) => boolean;
+  execute: (
+    ctx: SkillContext,
+    message: import("discord.js").Message,
+    guildSettings: GuildSettings
+  ) => Promise<void>;
+}
+
 export interface SkillCronJob {
   id: string;
   defaultCron: string;
@@ -62,6 +74,7 @@ export interface Skill {
   // Capabilities (optional)
   commands?: SkillCommand[];
   reactions?: ReactionHandler[];
+  messages?: MessageHandler[];
   cron?: SkillCronJob[];
   channelRoles?: string[];
 }
