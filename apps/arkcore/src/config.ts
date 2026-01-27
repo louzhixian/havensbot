@@ -3,7 +3,7 @@ export type LlmProvider = "none" | "openai_compat";
 export type AppConfig = {
   discordToken: string;
   discordApplicationId: string;
-  discordGuildId: string;
+  discordGuildId?: string;
   databaseUrl: string;
   digestThreadMode: boolean;
   digestThreadThrottleMs: number;
@@ -98,7 +98,7 @@ export const loadConfig = (): AppConfig => {
   return {
     discordToken: requireEnv("DISCORD_BOT_TOKEN"),
     discordApplicationId: requireEnv("DISCORD_APPLICATION_ID"),
-    discordGuildId: requireEnv("DISCORD_GUILD_ID"),
+    discordGuildId: process.env.DISCORD_GUILD_ID || undefined,
     databaseUrl: requireEnv("DATABASE_URL"),
     digestThreadMode: parseBoolean(process.env.DIGEST_THREAD_MODE, true),
     digestThreadThrottleMs: parsePositiveInt(process.env.DIGEST_THREAD_THROTTLE_MS, 400),

@@ -23,11 +23,22 @@ export const createClient = (): Client => {
 export const registerCommands = async (config: AppConfig): Promise<void> => {
   const rest = new REST({ version: "10" }).setToken(config.discordToken);
 
-  await rest.put(
-    Routes.applicationGuildCommands(
-      config.discordApplicationId,
-      config.discordGuildId
-    ),
-    { body: commandData }
-  );
+  if (config.discordGuildId) {
+    // Guild-specific commands (faster for development)
+    await rest.put(
+      Routes.applicationGuildCommands(
+        config.discordApplicationId,
+        config.discordGuildId
+      ),
+      { body: commandData }
+    );
+    console.log(`Registered guild commands for ${config.discordGuildId}`);
+  } else {
+    // Global commands (for multi-tenant production)
+    await rest.put(
+      Routes.applicationCommands(config.discordApplicationId),
+      { body: commandData }
+    );
+    console.log("Registered global commands");
+  }
 };
