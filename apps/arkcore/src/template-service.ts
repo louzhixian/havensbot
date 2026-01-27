@@ -240,13 +240,6 @@ export const applyTemplate = async (
             }
           }
 
-          // Build availableTags for forum channels
-          const availableTags = channelDef.availableTags?.map((tag) => ({
-            name: tag.name,
-            moderated: tag.moderated ?? false,
-            emoji: tag.emoji ? { id: null, name: tag.emoji } : null,
-          }));
-
           // Check if this is a forum channel by type string
           const isForum = channelDef.type === "forum";
 
@@ -256,13 +249,17 @@ export const applyTemplate = async (
             parent: categoryId,
             topic: channelDef.topic,
             permissionOverwrites: permissionOverwrites.length > 0 ? permissionOverwrites : undefined,
-            ...(isForum && availableTags?.length
-              ? { availableTags }
-              : {}),
           });
 
-          if (isForum && availableTags?.length) {
-            logger.info({ guildId, channelName: channelDef.name, tagsCount: availableTags.length }, "Created forum with tags");
+          // Set availableTags after creating forum channel
+          if (isForum && channelDef.availableTags?.length && "setAvailableTags" in newChannel) {
+            const tags = channelDef.availableTags.map((tag) => ({
+              name: tag.name,
+              moderated: tag.moderated ?? false,
+              emoji: tag.emoji ? { id: null, name: tag.emoji } : null,
+            }));
+            await (newChannel as any).setAvailableTags(tags, "Template apply");
+            logger.info({ guildId, channelName: channelDef.name, tagsCount: tags.length }, "Set forum tags");
           }
 
           result.channelsCreated++;
