@@ -441,13 +441,9 @@ export const HAVENS_DEFAULT_TEMPLATE: TemplateStructure = {
       channels: [
         {
           name: "editorial",
-          type: "forum",
+          type: "text",
           role: "editorial",
-          availableTags: [
-            { name: "Translating", emoji: "🌐" },
-            { name: "Discussing", emoji: "💬" },
-            { name: "Complete", emoji: "✅" },
-          ],
+          topic: "转发内容开启创作讨论，发送链接或文本进行翻译",
         },
       ],
     },
