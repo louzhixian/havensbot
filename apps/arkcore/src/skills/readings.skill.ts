@@ -37,11 +37,6 @@ import { generateReadingsResponse } from "../readings/llm.js";
 import { CacheStore } from "../utils/cache-store.js";
 
 const BOOKMARK_EMOJI = "🔖";
-const MAX_BOOKMARK_CACHE = 1000;
-const bookmarkedMessages = new Map<
-  string,
-  { threadId: string; createdAt: number }
->();
 
 /**
  * Persistent cache for thread article URLs (R-02 fix).
@@ -50,6 +45,14 @@ const bookmarkedMessages = new Map<
  */
 const threadArticleUrlCache = new CacheStore("readings_thread_url");
 const THREAD_URL_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+/**
+ * R-01: Persistent cache for bookmarked messages.
+ * Uses database-backed CacheStore instead of in-memory Map to survive restarts.
+ * TTL: 1 hour
+ */
+const bookmarkedMessagesCache = new CacheStore("readings_bookmarked");
+const BOOKMARK_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 const PENDING_MARKER = "__pending__";
 
@@ -67,30 +70,23 @@ const getThreadArticleUrl = async (threadId: string): Promise<string | null> => 
   return threadArticleUrlCache.get<string>(threadId);
 };
 
-const wasBookmarked = (messageId: string): boolean =>
-  bookmarkedMessages.has(messageId);
-
-const markPending = (messageId: string): void => {
-  bookmarkedMessages.set(messageId, {
-    threadId: PENDING_MARKER,
-    createdAt: Date.now(),
-  });
+const wasBookmarked = async (messageId: string): Promise<boolean> => {
+  return bookmarkedMessagesCache.has(messageId);
 };
 
-const clearPending = (messageId: string): void => {
-  const entry = bookmarkedMessages.get(messageId);
+const markPending = async (messageId: string): Promise<void> => {
+  await bookmarkedMessagesCache.set(messageId, { threadId: PENDING_MARKER }, BOOKMARK_TTL_MS);
+};
+
+const clearPending = async (messageId: string): Promise<void> => {
+  const entry = await bookmarkedMessagesCache.get<{ threadId: string }>(messageId);
   if (entry?.threadId === PENDING_MARKER) {
-    bookmarkedMessages.delete(messageId);
+    await bookmarkedMessagesCache.delete(messageId);
   }
 };
 
-const markBookmarked = (messageId: string, threadId: string): void => {
-  bookmarkedMessages.set(messageId, { threadId, createdAt: Date.now() });
-  if (bookmarkedMessages.size <= MAX_BOOKMARK_CACHE) return;
-  const oldest = bookmarkedMessages.keys().next().value;
-  if (oldest) {
-    bookmarkedMessages.delete(oldest);
-  }
+const markBookmarked = async (messageId: string, threadId: string): Promise<void> => {
+  await bookmarkedMessagesCache.set(messageId, { threadId }, BOOKMARK_TTL_MS);
 };
 
 const generatePostTitle = (message: Message): string => {
@@ -166,11 +162,11 @@ const bookmarkReactionHandler: ReactionHandler = {
     )
       return;
 
-    // Check if already bookmarked or pending (in memory)
-    if (wasBookmarked(message.id)) return;
+    // Check if already bookmarked or pending (persisted in database)
+    if (await wasBookmarked(message.id)) return;
 
     // Mark as pending to prevent concurrent duplicate creation
-    markPending(message.id);
+    await markPending(message.id);
 
     try {
       // Generate post title
@@ -196,7 +192,7 @@ const bookmarkReactionHandler: ReactionHandler = {
       );
 
       // Mark as bookmarked immediately after thread creation to prevent duplicates
-      markBookmarked(message.id, thread.id);
+      await markBookmarked(message.id, thread.id);
 
       // Extract and store article URL for Q&A (persisted to database)
       const articleUrl = extractArticleUrl(message);
@@ -246,7 +242,7 @@ const bookmarkReactionHandler: ReactionHandler = {
       );
     } catch (innerError) {
       // Clear pending on failure so the message can be retried
-      clearPending(message.id);
+      await clearPending(message.id);
       throw innerError;
     }
   },

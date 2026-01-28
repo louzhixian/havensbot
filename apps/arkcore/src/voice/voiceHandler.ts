@@ -151,7 +151,7 @@ async function handleVoiceMessage(
       await errorMsg.react(EMOJI_RETRY);
 
       // Store retry info
-      retryCache.set(message.id, {
+      await retryCache.set(message.id, {
         messageId: message.id,
         audioUrl: attachment.url,
         attempts: 1,
@@ -216,13 +216,13 @@ async function handleRetry(
   });
 
   // Check if retry is allowed
-  if (!retryCache.canRetry(originalMessageId)) {
+  if (!(await retryCache.canRetry(originalMessageId))) {
     log.info("Retry not allowed (max attempts reached or no record)");
     await thread.send({ content: "已达到最大重试次数" });
     return;
   }
 
-  const record = retryCache.get(originalMessageId);
+  const record = await retryCache.get(originalMessageId);
   if (!record) {
     log.warn("No retry record found");
     return;
@@ -231,7 +231,7 @@ async function handleRetry(
   log.info({ attempt: record.attempts + 1 }, "Retrying voice transcription");
 
   // Increment attempts
-  retryCache.incrementAttempts(originalMessageId);
+  await retryCache.incrementAttempts(originalMessageId);
 
   // Send processing message
   await thread.send({ content: "正在重试转录..." });
@@ -257,7 +257,7 @@ async function handleRetry(
     const errorMessage = error instanceof Error ? error.message : String(error);
     log.error({ error: errorMessage }, "Retry failed");
 
-    if (retryCache.canRetry(originalMessageId)) {
+    if (await retryCache.canRetry(originalMessageId)) {
       await thread.send({ content: `重试失败: ${errorMessage}\n\n点击 ${EMOJI_RETRY} 再次重试` });
       const retryMsg = await thread.send({ content: "." });
       // Delete the placeholder and create a new message with retry reaction
@@ -358,8 +358,8 @@ export function registerVoiceHandler(client: Client, config: AppConfig): void {
   });
 
   // Set up periodic cleanup of retry cache
-  setInterval(() => {
-    retryCache.cleanup();
+  setInterval(async () => {
+    await retryCache.cleanup();
   }, 60 * 60 * 1000); // Every hour
 
   logger.info("Voice message handler registered");

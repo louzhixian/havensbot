@@ -131,7 +131,7 @@ async function handleVoiceMessage(
       await errorMsg.react(EMOJI_RETRY);
 
       // Store retry info
-      retryCache.set(message.id, {
+      await retryCache.set(message.id, {
         messageId: message.id,
         audioUrl: attachment.url,
         attempts: 1,
@@ -216,16 +216,16 @@ const retryReactionHandler: ReactionHandler = {
     const originalMessageId = starterMessage.id;
 
     // Check if retry is allowed
-    if (!retryCache.canRetry(originalMessageId)) {
+    if (!(await retryCache.canRetry(originalMessageId))) {
       await thread.send({ content: "已达到最大重试次数" });
       return;
     }
 
-    const record = retryCache.get(originalMessageId);
+    const record = await retryCache.get(originalMessageId);
     if (!record) return;
 
     // Increment attempts
-    retryCache.incrementAttempts(originalMessageId);
+    await retryCache.incrementAttempts(originalMessageId);
 
     // Send processing message
     await thread.send({ content: "正在重试转录..." });
@@ -252,7 +252,7 @@ const retryReactionHandler: ReactionHandler = {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
-      if (retryCache.canRetry(originalMessageId)) {
+      if (await retryCache.canRetry(originalMessageId)) {
         await thread.send({
           content: `重试失败: ${errorMessage}\n\n点击 ${EMOJI_RETRY} 再次重试`,
         });
@@ -271,8 +271,8 @@ const retryReactionHandler: ReactionHandler = {
 voiceQueue.setProcessor(handleVoiceMessage);
 
 // Set up periodic cleanup of retry cache (every hour)
-setInterval(() => {
-  retryCache.cleanup();
+setInterval(async () => {
+  await retryCache.cleanup();
 }, 60 * 60 * 1000);
 
 export const voiceSkill: Skill = {

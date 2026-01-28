@@ -14,33 +14,41 @@ import { splitMessageContent } from "../messaging.js";
 import { sleep } from "../utils.js";
 import { loadConfig } from "../config.js";
 import { markForwarded, wasForwarded } from "../favorites.js";
+import { CacheStore } from "../utils/cache-store.js";
 
 const HEART_EMOJIS = ["❤", "♥"];
 const EYES_EMOJIS = ["👀"];
-const MAX_FORWARD_CACHE = 1000;
 
-const deeperMessages = new Map<
-  string,
-  { forwardedId: string; channelId: string; threadId: string; createdAt: number }
->();
+/**
+ * F-01: Persistent cache for deep dive messages.
+ * Uses database-backed CacheStore instead of in-memory Map to survive restarts.
+ * Only stores threadId (not full record) since that's all we need for deduplication.
+ * TTL: 1 hour
+ */
+const deeperMessagesCache = new CacheStore("favorites_deeper");
+const DEEPER_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-const markDeeperForwarded = (
+type DeeperRecord = {
+  forwardedId: string;
+  channelId: string;
+  threadId: string;
+};
+
+const markDeeperForwarded = async (
   messageId: string,
   forwardedId: string,
   channelId: string,
   threadId: string
-): void => {
-  deeperMessages.set(messageId, {
-    forwardedId,
-    channelId,
-    threadId,
-    createdAt: Date.now(),
-  });
-  if (deeperMessages.size <= MAX_FORWARD_CACHE) return;
-  const oldest = deeperMessages.keys().next().value;
-  if (oldest) {
-    deeperMessages.delete(oldest);
-  }
+): Promise<void> => {
+  await deeperMessagesCache.set<DeeperRecord>(
+    messageId,
+    { forwardedId, channelId, threadId },
+    DEEPER_TTL_MS
+  );
+};
+
+const wasDeeperForwarded = async (messageId: string): Promise<boolean> => {
+  return deeperMessagesCache.has(messageId);
 };
 
 const ensureMessage = async (
@@ -120,7 +128,7 @@ const handleEyesReaction = async (
 
   if (!deepDiveForumId) return;
   if (message.channelId === deepDiveForumId) return;
-  if (deeperMessages.has(message.id)) return;
+  if (await wasDeeperForwarded(message.id)) return;
 
   const itemUrl = extractItemUrl(message);
   if (!itemUrl) return;
@@ -138,7 +146,7 @@ const handleEyesReaction = async (
   );
 
   if (forumResult) {
-    markDeeperForwarded(message.id, forumResult.threadId, deepDiveForumId, forumResult.threadId);
+    await markDeeperForwarded(message.id, forumResult.threadId, deepDiveForumId, forumResult.threadId);
 
     await forumResult.thread.send({ content: "正在生成深度解读，请稍候..." });
 

@@ -17,14 +17,15 @@ import type { GuildSettings } from "@prisma/client";
 import type { Skill, SkillContext, MessageHandler } from "./types.js";
 import { getConfigByRole } from "../channel-config.js";
 import { loadConfig, type AppConfig } from "../config.js";
+import { createLlmClient, type LlmClient } from "../llm/client.js";
 import { splitMessageContent } from "../messaging.js";
 import {
-  buildOpenAiCompatUrl,
   collapseWhitespace,
   fetchArticleText,
   stripHtml,
   truncate,
 } from "../utils.js";
+import { logger } from "../observability/logger.js";
 
 // ============================================================================
 // Constants
@@ -88,52 +89,40 @@ const renderTemplate = (
 // LLM Utilities (Shared)
 // ============================================================================
 
+/**
+ * Check if LLM is enabled and configured.
+ * C-01: Updated to use standard LlmClient check pattern.
+ */
 const isLlmEnabled = (config: AppConfig): boolean =>
-  config.llmProvider === "openai_compat" &&
+  config.llmProvider !== "none" &&
   Boolean(config.llmApiKey) &&
   Boolean(config.llmModel);
 
-const callOpenAiCompat = async (
-  config: AppConfig,
+/**
+ * Call LLM using the unified LlmClient.
+ * C-01: Migrated from direct fetch to createLlmClient factory.
+ */
+const callLlm = async (
+  llmClient: LlmClient,
+  operation: string,
   systemPrompt: string,
   userPrompt: string,
   temperature = 0.3
 ): Promise<string> => {
-  if (!config.llmApiKey || !config.llmModel) {
-    throw new Error("LLM missing API key or model");
-  }
-
-  const endpoint = buildOpenAiCompatUrl(config.llmBaseUrl);
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.llmApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: config.llmModel,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature,
-      max_tokens: config.llmMaxTokens,
-    }),
+  const response = await llmClient.call({
+    operation,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    temperature,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw new Error(`LLM request failed (${response.status}): ${errorText}`);
+  if (!response.success || !response.data) {
+    throw new Error(response.error || "LLM call failed");
   }
 
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error("LLM response missing content");
-  }
-  return content;
+  return response.data;
 };
 
 // ============================================================================
@@ -491,6 +480,7 @@ const editorialChannelHandler: MessageHandler = {
 
     await thread.send({ content: "正在翻译，请稍候..." });
 
+    const llmClient = createLlmClient(config);
     let index = 0;
     for (const chunk of chunks) {
       index += 1;
@@ -500,8 +490,9 @@ const editorialChannelHandler: MessageHandler = {
         sourceUrl: input.sourceUrl ?? "",
         contentText: truncate(chunk, TRANSLATION_CHUNK_CHARS),
       });
-      const response = await callOpenAiCompat(
-        config,
+      const response = await callLlm(
+        llmClient,
+        "editorial_translation",
         prompt.system,
         userPrompt,
         0.2
@@ -567,8 +558,11 @@ const editorialThreadHandler: MessageHandler = {
     });
 
     await thread.send({ content: "正在生成内容，请稍候..." });
-    const response = await callOpenAiCompat(
-      config,
+
+    const llmClient = createLlmClient(config);
+    const response = await callLlm(
+      llmClient,
+      "editorial_discussion",
       prompt.system,
       userPrompt,
       0.3
