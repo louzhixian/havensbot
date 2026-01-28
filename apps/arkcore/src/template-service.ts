@@ -495,11 +495,21 @@ export const seedBuiltinTemplates = async (): Promise<void> => {
   if (!existing) {
     await createTemplate(
       "havens-default",
-      "Haven 标准布局 - 包含信息源、输出和系统频道",
+      "Haven 标准布局 - 包含信息源、输出、阅读、编辑、日记和系统频道",
       HAVENS_DEFAULT_TEMPLATE,
       undefined,
       true
     );
     logger.info("Seeded builtin template: havens-default");
+  } else {
+    // Update existing builtin template
+    await prisma.guildTemplate.update({
+      where: { name: "havens-default" },
+      data: {
+        description: "Haven 标准布局 - 包含信息源、输出、阅读、编辑、日记和系统频道",
+        structure: HAVENS_DEFAULT_TEMPLATE as any,
+      },
+    });
+    logger.info("Updated builtin template: havens-default");
   }
 };
