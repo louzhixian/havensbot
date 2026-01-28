@@ -164,6 +164,8 @@ const voiceMessageHandler: MessageHandler = {
     return hasAudio;
   },
   execute: async (ctx, message, _settings) => {
+    // TODO (V-05): 考虑在 SkillContext 中预传入 config
+    // 或在 Skill 模块级别缓存，避免重复调用 loadConfig()
     const config = loadConfig();
     logger.info({
       voiceToTextEnabled: config.voiceToTextEnabled,
@@ -230,6 +232,8 @@ const retryReactionHandler: ReactionHandler = {
     // Send processing message
     await thread.send({ content: "正在重试转录..." });
 
+    // TODO (V-05): 考虑在 SkillContext 中预传入 config
+    // 或在 Skill 模块级别缓存，避免重复调用 loadConfig()
     const config = loadConfig();
 
     try {

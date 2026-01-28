@@ -72,6 +72,12 @@ const extractItemUrl = (message: Message): string | null => {
   return match[0].replace(/[>\])}.,!?]+$/, "");
 };
 
+// TODO (F-05): 改进 fallback 逻辑，保留更多元数据
+// 当前 fallback 手动重建消息时丢失原始消息的时间戳、作者等元数据。
+// 建议方案：
+// 1. 检查 Discord.js 版本是否支持 Message.forward() 方法
+// 2. 如果不支持，添加更完整的消息复制逻辑（包括时间戳、作者等）
+// 3. 移除类型断言，使用类型守卫 (type guard)
 const forwardMessage = async (
   message: Message,
   channel: GuildTextBasedChannel

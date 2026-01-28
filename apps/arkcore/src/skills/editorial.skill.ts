@@ -48,13 +48,20 @@ const TRANSLATION_PROMPT_FILE = "editorial.translation.prompt.md";
 // Prompt Loading (Shared)
 // ============================================================================
 
-const PROMPT_CACHE = new Map<string, { system: string; user: string }>();
+const PROMPT_CACHE = new Map<
+  string,
+  { system: string; user: string; timestamp: number }
+>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 const loadPromptSections = async (
   fileName: string
 ): Promise<{ system: string; user: string }> => {
   const cached = PROMPT_CACHE.get(fileName);
-  if (cached) return cached;
+  const now = Date.now();
+  if (cached && now - cached.timestamp < CACHE_TTL_MS) {
+    return { system: cached.system, user: cached.user };
+  }
 
   const filePath = path.join(PROMPT_DIR, fileName);
   const content = await readFile(filePath, "utf8");
@@ -72,7 +79,7 @@ const loadPromptSections = async (
     .trim();
   const user = content.slice(userIndex + userToken.length).trim();
   const result = { system, user };
-  PROMPT_CACHE.set(fileName, result);
+  PROMPT_CACHE.set(fileName, { ...result, timestamp: Date.now() });
   return result;
 };
 
@@ -508,6 +515,9 @@ const editorialChannelHandler: MessageHandler = {
 /**
  * Handler for messages in editorial discussion threads.
  * Responds to user messages with LLM-generated content.
+ *
+ * TODO (E-05): 考虑框架层支持 channelRole + threadOnly 选项
+ * 或定义 parentChannelRole，避免手动检查 isEditorialThread
  */
 const editorialThreadHandler: MessageHandler = {
   // No channelRole - we check internally for thread parent

@@ -172,6 +172,15 @@ export const handleDiaryMessage = async (
     data: { messageCount: { increment: 1 } },
   });
 
+  // Show typing indicator
+  try {
+    if ('sendTyping' in message.channel) {
+      await message.channel.sendTyping();
+    }
+  } catch {
+    // Ignore typing errors (e.g., missing permissions)
+  }
+
   // Generate response
   try {
     const response = await generateDiaryResponse(config, llmClient, messages);

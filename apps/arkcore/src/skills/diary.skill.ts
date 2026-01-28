@@ -63,6 +63,8 @@ const diaryMessageHandler: MessageHandler = {
       return;
     }
 
+    // TODO (D-01): 考虑在 SkillContext 中预创建 llmClient
+    // 或添加 lazy 初始化的单例，避免重复创建
     const config = loadConfig();
     const llmClient = createLlmClient(config);
 
@@ -101,6 +103,8 @@ const diaryStartButtonHandler: ButtonHandler = {
         return;
       }
 
+      // TODO (D-01): 考虑在 SkillContext 中预创建 llmClient
+      // 或添加 lazy 初始化的单例，避免重复创建
       const config = loadConfig();
       const llmClient = createLlmClient(config);
 
@@ -158,6 +162,8 @@ const diaryEndButtonHandler: ButtonHandler = {
 
       const threadId = message.channelId;
 
+      // TODO (D-01): 考虑在 SkillContext 中预创建 llmClient
+      // 或添加 lazy 初始化的单例，避免重复创建
       const config = loadConfig();
       const llmClient = createLlmClient(config);
 
@@ -241,6 +247,8 @@ const diaryTimeoutCheckCron: SkillCronJob = {
       return;
     }
 
+    // TODO (D-01): 考虑在 SkillContext 中预创建 llmClient
+    // 或添加 lazy 初始化的单例，避免重复创建
     const llmClient = createLlmClient(config);
 
     try {

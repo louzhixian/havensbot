@@ -13,6 +13,7 @@ import {
 } from "../messaging.js";
 import { loadConfig, AppConfig } from "../config.js";
 import { getSkillConfig } from "../guild-settings.js";
+import { getGuildTimezone } from "../utils/timezone.js";
 
 // Retry configuration
 const MAX_RETRIES = 2;
@@ -161,7 +162,7 @@ const runDigestForGuild = async (
     return;
   }
 
-  const timezone = settings.timezone || config.tz;
+  const timezone = getGuildTimezone(settings, config);
 
   const failedChannels: Array<{ channelName: string; error: string }> = [];
   let successCount = 0;
@@ -187,7 +188,30 @@ const runDigestForGuild = async (
       ctx.logger.info({ guildId, threadId: thread.id }, "Created forum digest post");
     }
 
-    for (const { channelId, channelName } of channelsToProcess) {
+    // Create initial progress message
+    let statusMessage: Awaited<ReturnType<typeof thread.send>> | null = null;
+    try {
+      statusMessage = await thread.send({
+        content: `📊 正在生成每日摘要 (0/${channelsToProcess.length} 频道)，请稍候...`,
+      });
+    } catch (error) {
+      ctx.logger.warn({ error }, "Failed to create status message");
+    }
+
+    for (let i = 0; i < channelsToProcess.length; i++) {
+      const { channelId, channelName } = channelsToProcess[i];
+
+      // Update progress message
+      if (statusMessage && "edit" in statusMessage) {
+        try {
+          await statusMessage.edit({
+            content: `📊 正在处理: ${i + 1}/${channelsToProcess.length} 频道 (#${channelName})...`,
+          });
+        } catch (error) {
+          ctx.logger.debug({ error }, "Failed to update status message");
+        }
+      }
+
       const result = await processChannelWithRetry(
         ctx,
         config,
@@ -204,6 +228,15 @@ const runDigestForGuild = async (
           channelName,
           error: result.error?.message || "Unknown error",
         });
+      }
+    }
+
+    // Delete status message after completion
+    if (statusMessage && "delete" in statusMessage) {
+      try {
+        await statusMessage.delete();
+      } catch (error) {
+        ctx.logger.debug({ error }, "Failed to delete status message");
       }
     }
 
