@@ -19,6 +19,7 @@ import { retryCache } from "../voice/retryCache.js";
 import { polishTranscript } from "../voice/textPolisher.js";
 import { voiceQueue } from "../voice/voiceQueue.js";
 import { transcribe } from "../voice/whisperClient.js";
+import { logger } from "../observability/logger.js";
 
 /** Thread name for voice transcription results */
 const THREAD_NAME = "语音转文字";
@@ -153,10 +154,21 @@ const voiceMessageHandler: MessageHandler = {
     // Skip if already in a thread
     if (message.channel.isThread()) return false;
     // Must have audio attachment
-    return message.attachments.some(isAudioAttachment);
+    const hasAudio = message.attachments.some(isAudioAttachment);
+    logger.info({
+      channelId: message.channelId,
+      attachmentCount: message.attachments.size,
+      attachmentTypes: message.attachments.map(a => a.contentType).join(', '),
+      hasAudio,
+    }, "Voice skill filter check");
+    return hasAudio;
   },
   execute: async (ctx, message, _settings) => {
     const config = loadConfig();
+    logger.info({
+      voiceToTextEnabled: config.voiceToTextEnabled,
+      whisperApiUrl: config.whisperApiUrl,
+    }, "Voice skill execute check");
 
     // Skip if voice-to-text is not enabled
     if (!config.voiceToTextEnabled) return;
