@@ -81,6 +81,8 @@ export interface Skill {
   // Lifecycle (optional)
   onGuildJoin?: (ctx: SkillContext, guildId: string) => Promise<void>;
   onGuildLeave?: (ctx: SkillContext, guildId: string) => Promise<void>;
+  onBotReady?: (ctx: SkillContext) => Promise<void>;  // bot 启动完成
+  onBotStop?: (ctx: SkillContext) => Promise<void>;   // bot 正在关闭
 
   // Capabilities (optional)
   commands?: SkillCommand[];

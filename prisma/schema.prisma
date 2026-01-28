@@ -229,3 +229,19 @@ model GuildTemplate {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// Generic key-value cache for replacing in-memory Maps
+// Addresses: V-01, R-01, R-02, F-01 (memory cache persistence issues)
+model CacheEntry {
+  id        String    @id @default(cuid())
+  namespace String    // e.g., "voice_retry", "readings_bookmark", "favorites_forward"
+  key       String    // Original Map key
+  value     Json      // Original Map value
+  expiresAt DateTime? // Optional TTL
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([namespace, key])
+  @@index([namespace])
+  @@index([expiresAt])
+}

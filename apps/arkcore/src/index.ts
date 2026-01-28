@@ -186,6 +186,9 @@ const main = async (): Promise<void> => {
       logger.info({ guildId, guildName: guild.name }, "Initialized GuildSettings");
     }
 
+    // Invoke onBotReady lifecycle hook for all skills
+    await registry.invokeOnBotReady();
+
     // Seed builtin templates
     await seedBuiltinTemplates();
 
@@ -221,6 +224,8 @@ const main = async (): Promise<void> => {
 
   const shutdown = async () => {
     console.log("Shutting down...");
+    // Invoke onBotStop lifecycle hook for all skills
+    await registry.invokeOnBotStop();
     await disconnect();
     client.destroy();
     process.exit(0);

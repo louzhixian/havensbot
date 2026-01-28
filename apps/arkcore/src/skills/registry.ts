@@ -69,4 +69,38 @@ export class SkillRegistry {
       (s.buttons ?? []).map((h) => ({ skill: s, handler: h }))
     );
   }
+
+  /**
+   * Invoke onBotReady lifecycle hook for all registered skills.
+   * Called when the Discord client is ready.
+   */
+  async invokeOnBotReady(): Promise<void> {
+    for (const skill of this.getAll()) {
+      if (skill.onBotReady) {
+        try {
+          await skill.onBotReady(this.ctx);
+          this.ctx.logger.debug({ skillId: skill.id }, "Skill onBotReady completed");
+        } catch (error) {
+          this.ctx.logger.error({ error, skillId: skill.id }, "Skill onBotReady failed");
+        }
+      }
+    }
+  }
+
+  /**
+   * Invoke onBotStop lifecycle hook for all registered skills.
+   * Called during graceful shutdown.
+   */
+  async invokeOnBotStop(): Promise<void> {
+    for (const skill of this.getAll()) {
+      if (skill.onBotStop) {
+        try {
+          await skill.onBotStop(this.ctx);
+          this.ctx.logger.debug({ skillId: skill.id }, "Skill onBotStop completed");
+        } catch (error) {
+          this.ctx.logger.error({ error, skillId: skill.id }, "Skill onBotStop failed");
+        }
+      }
+    }
+  }
 }

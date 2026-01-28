@@ -1,5 +1,3 @@
-import { readFile } from "fs/promises";
-import path from "path";
 import {
   ThreadAutoArchiveDuration,
   type Client,
@@ -8,103 +6,20 @@ import {
 import { AppConfig } from "./config.js";
 import { getConfigByRole } from "./channel-config.js";
 import {
-  buildOpenAiCompatUrl,
   collapseWhitespace,
   fetchArticleText,
   stripHtml,
   truncate,
 } from "./utils.js";
 import { splitMessageContent } from "./messaging.js";
+import { createLlmClient, type LlmClient } from "./llm/client.js";
+import { loadPromptSections, renderTemplate } from "./utils/prompt-utils.js";
 
 const THREAD_TITLE = "翻译";
 const TRANSLATION_CHUNK_CHARS = 3000;
 const MIN_FETCHED_CHARS = 120;
 const MAX_ATTACHMENT_CHARS = 60000;
-const PROMPT_DIR = path.resolve(process.cwd(), "prompts");
 const PROMPT_FILE = "editorial.translation.prompt.md";
-const PROMPT_CACHE = new Map<string, { system: string; user: string }>();
-
-const loadPromptSections = async (
-  fileName: string
-): Promise<{ system: string; user: string }> => {
-  const cached = PROMPT_CACHE.get(fileName);
-  if (cached) return cached;
-
-  const filePath = path.join(PROMPT_DIR, fileName);
-  const content = await readFile(filePath, "utf8");
-  const systemToken = "## System";
-  const userToken = "## User";
-  const systemIndex = content.indexOf(systemToken);
-  const userIndex = content.indexOf(userToken);
-
-  if (systemIndex < 0 || userIndex < 0 || userIndex <= systemIndex) {
-    throw new Error(`Prompt missing System/User sections: ${fileName}`);
-  }
-
-  const system = content
-    .slice(systemIndex + systemToken.length, userIndex)
-    .trim();
-  const user = content.slice(userIndex + userToken.length).trim();
-  const result = { system, user };
-  PROMPT_CACHE.set(fileName, result);
-  return result;
-};
-
-const renderTemplate = (
-  template: string,
-  values: Record<string, string>
-): string => {
-  return template.replace(/\{\{(\w+)\}\}/g, (match, key) =>
-    Object.prototype.hasOwnProperty.call(values, key) ? values[key] : match
-  );
-};
-
-const isLlmEnabled = (config: AppConfig): boolean =>
-  config.llmProvider === "openai_compat" &&
-  Boolean(config.llmApiKey) &&
-  Boolean(config.llmModel);
-
-const callOpenAiCompat = async (
-  config: AppConfig,
-  systemPrompt: string,
-  userPrompt: string
-): Promise<string> => {
-  if (!config.llmApiKey || !config.llmModel) {
-    throw new Error("LLM missing API key or model");
-  }
-
-  const endpoint = buildOpenAiCompatUrl(config.llmBaseUrl);
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.llmApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: config.llmModel,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.2,
-      max_tokens: config.llmMaxTokens,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw new Error(`LLM request failed (${response.status}): ${errorText}`);
-  }
-
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error("LLM response missing content");
-  }
-  return content;
-};
 
 const hasThread = (message: Message): boolean => {
   return "hasThread" in message ? Boolean(message.hasThread) : false;
@@ -277,6 +192,12 @@ export const registerEditorialTranslationHandlers = (
   client: Client,
   config: AppConfig
 ): void => {
+  // Create LLM client once for reuse
+  const llmClient: LlmClient | null =
+    config.llmProvider !== "none" && config.llmApiKey && config.llmModel
+      ? createLlmClient(config)
+      : null;
+
   client.on("messageCreate", async (message) => {
     try {
       if (message.author.bot) return;
@@ -295,7 +216,7 @@ export const registerEditorialTranslationHandlers = (
       const input = await resolveTranslationInput(message);
       if (!input) return;
 
-      if (!isLlmEnabled(config)) {
+      if (!llmClient) {
         await message.reply({
           content: "LLM 未启用或缺少配置，无法翻译。",
         });
@@ -333,12 +254,21 @@ export const registerEditorialTranslationHandlers = (
           sourceUrl: input.sourceUrl ?? "",
           contentText: truncate(chunk, TRANSLATION_CHUNK_CHARS),
         });
-        const response = await callOpenAiCompat(
-          config,
-          prompt.system,
-          userPrompt
-        );
-        const outputChunks = splitMessageContent(response.trim(), 1800);
+
+        const llmResponse = await llmClient.call({
+          operation: "editorial_translation",
+          messages: [
+            { role: "system", content: prompt.system },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.2,
+        });
+
+        if (!llmResponse.success || !llmResponse.data) {
+          throw new Error(llmResponse.error || "LLM response missing content");
+        }
+
+        const outputChunks = splitMessageContent(llmResponse.data.trim(), 1800);
         for (const output of outputChunks) {
           await thread.send({ content: output });
         }
