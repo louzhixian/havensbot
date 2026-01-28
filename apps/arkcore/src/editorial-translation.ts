@@ -244,10 +244,16 @@ export const registerEditorialTranslationHandlers = (
         return;
       }
 
-      await thread.send({ content: "正在翻译，请稍候..." });
+      // 对于单段翻译，只显示简单提示；多段翻译显示进度
+      if (total === 1) {
+        await thread.send({ content: "正在翻译，请稍候..." });
+      }
       let index = 0;
       for (const chunk of chunks) {
         index += 1;
+        if (total > 1) {
+          await thread.send({ content: `翻译中 (${index}/${total})...` });
+        }
         const userPrompt = renderTemplate(prompt.user, {
           partIndex: String(index),
           totalParts: String(total),

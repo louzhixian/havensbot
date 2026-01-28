@@ -148,6 +148,7 @@ model SystemAlert {
 
 model DiarySession {
   id           String    @id @default(cuid())
+  guildId      String    // D-02: Added for guild-scoped timeout checks
   date         DateTime  @db.Date
   threadId     String    @unique
   channelId    String
@@ -161,6 +162,7 @@ model DiarySession {
 
   @@index([date])
   @@index([channelId])
+  @@index([guildId, endedAt]) // D-02: For efficient guild-scoped queries
 }
 
 enum ChannelConfigRole {

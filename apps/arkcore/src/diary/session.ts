@@ -90,6 +90,12 @@ export const startDiarySessionInThread = async (
 
   const channelId = thread.parentId;
 
+  // Get guildId from thread
+  const guildId = "guildId" in thread ? thread.guildId : null;
+  if (!guildId) {
+    throw new Error("Cannot determine guild for thread");
+  }
+
   // Generate opening message
   const openingMessage = await generateOpeningMessage(config, llmClient);
 
@@ -100,6 +106,7 @@ export const startDiarySessionInThread = async (
   // Create session in database
   const session = await prisma.diarySession.create({
     data: {
+      guildId,
       date: todayStart,
       threadId,
       channelId,
@@ -326,11 +333,13 @@ export const getDiarySessionByThread = async (
 
 /**
  * Check and end timed-out sessions
+ * @param guildId - If provided, only check sessions for this guild (D-02 fix)
  */
 export const checkTimeoutSessions = async (
   config: AppConfig,
   client: Client,
-  llmClient: LlmClient
+  llmClient: LlmClient,
+  guildId?: string
 ): Promise<number> => {
   const timeoutMs = config.diaryTimeoutMinutes * 60 * 1000;
   const cutoff = new Date(Date.now() - timeoutMs);
@@ -339,6 +348,8 @@ export const checkTimeoutSessions = async (
     where: {
       endedAt: null,
       updatedAt: { lt: cutoff },
+      // D-02: Filter by guildId when provided to avoid duplicate processing
+      ...(guildId ? { guildId } : {}),
     },
   });
 
@@ -356,7 +367,7 @@ export const checkTimeoutSessions = async (
   }
 
   if (endedCount > 0) {
-    logger.info({ endedCount }, "Ended timed-out diary sessions");
+    logger.info({ endedCount, guildId: guildId || "all" }, "Ended timed-out diary sessions");
   }
 
   return endedCount;

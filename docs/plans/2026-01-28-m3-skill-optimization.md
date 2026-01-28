@@ -809,6 +809,35 @@ interface Skill {
 8. **V-03, R-05**: 错误消息改善
 9. **D-02, D-03**: Diary 会话管理
 
+#### Phase 3 进度
+- E-03 ✅ (2026-01-29): 翻译长文章进度反馈
+  - 在 `editorial-translation.ts` 中添加分段翻译进度显示
+  - 单段翻译显示 "正在翻译，请稍候..."
+  - 多段翻译显示 "翻译中 (1/3)...", "翻译中 (2/3)...", "翻译中 (3/3)..."
+  - 用户可以实时了解翻译进度
+- F-04 ✅ (2026-01-29): DeepDive 进度指示
+  - 在 `favorites.skill.ts` 的 `handleEyesReaction` 中添加 typing indicator
+  - 每 5 秒发送一次 typing indicator，持续到生成完成或失败
+  - 使用 `finally` 块确保 interval 总是被清除
+  - 用户可以看到 Discord 的 "xxx is typing..." 提示，知道系统正在处理
+- V-03 ✅ (2026-01-29): Voice 错误处理改善
+  - 所有静默 catch 块添加 `logger.debug` 日志
+  - 包括: updateReaction、handleVoiceMessage 中的 reaction 操作、error thread 创建、retry 成功后的 reaction 更新
+  - 调试时可以追踪 reaction 失败原因
+- R-05 ✅ (2026-01-29): Readings 错误用户反馈
+  - 附件发送失败时显示 "⚠️ 部分附件发送失败，请查看原消息"
+  - 按钮发送失败时显示 "⚠️ 状态切换按钮加载失败"
+  - 用户能够知道操作未完全成功
+- D-02 ✅ (2026-01-29): 超时检查 cron 全局 vs Guild 问题
+  - 在 `DiarySession` 模型中添加 `guildId` 字段
+  - 修改 `checkTimeoutSessions()` 函数接受可选的 `guildId` 参数
+  - 更新 `diaryTimeoutCheckCron` 传入当前 guildId，只处理该 guild 的会话
+  - 解决了 10 个 Guild 每 5 分钟重复检查 10 次的问题
+  - **注意**: 需要执行 `npx prisma migrate dev --name add_diary_session_guild_id`
+- D-03 ✅ (2026-01-29): 会话恢复机制 (TODO)
+  - 在 `diary.skill.ts` 添加 TODO 注释，描述后续实现计划
+  - 包括: 启动时检查活跃会话、自动关闭超时会话、添加 /diary recover 指令
+
 ### Phase 4: 代码质量（持续）
 10. P2 优化项逐步处理
 

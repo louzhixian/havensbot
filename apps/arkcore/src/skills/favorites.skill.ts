@@ -143,6 +143,12 @@ const handleEyesReaction = async (
     await forumResult.thread.send({ content: "正在生成深度解读，请稍候..." });
 
     const config = loadConfig();
+
+    // 定期发送 typing indicator，让用户知道正在处理中
+    const typingInterval = setInterval(() => {
+      forumResult.thread.sendTyping?.().catch(() => {});
+    }, 5000);
+
     try {
       const result = await generateDeepDive(config, itemUrl);
       const chunks = splitMessageContent(result.content, 1800);
@@ -158,6 +164,8 @@ const handleEyesReaction = async (
         content: `❌ 生成失败: ${errorMessage}\n\n请稍后重试或检查链接是否有效。`,
       });
       await forumResult.markFailed();
+    } finally {
+      clearInterval(typingInterval);
     }
   }
 };

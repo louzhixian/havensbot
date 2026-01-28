@@ -214,6 +214,7 @@ const bookmarkReactionHandler: ReactionHandler = {
             { error: attachError, threadId: thread.id },
             "Failed to send attachments"
           );
+          await thread.send({ content: "⚠️ 部分附件发送失败，请查看原消息" }).catch(() => {});
         }
       }
 
@@ -236,6 +237,7 @@ const bookmarkReactionHandler: ReactionHandler = {
           { error: buttonError, threadId: thread.id },
           "Failed to send toggle button"
         );
+        await thread.send({ content: "⚠️ 状态切换按钮加载失败" }).catch(() => {});
       }
 
       logger.info(

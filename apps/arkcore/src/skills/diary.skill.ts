@@ -7,6 +7,12 @@
  * - LLM-powered conversational responses
  * - Automatic session timeout handling
  * - Markdown export on session end
+ *
+ * TODO (D-03): 服务重启后恢复活跃会话
+ * - 启动时检查数据库中的活跃会话 (status = 'active', endedAt = null)
+ * - 对超过 1 天的未完成会话自动关闭
+ * - 添加手动恢复指令 /diary recover
+ * - 考虑在 onBotReady 生命周期钩子中实现会话恢复
  */
 
 import { ChannelType, type Message, type ButtonInteraction } from "discord.js";
@@ -221,6 +227,8 @@ const dailyDiaryPostCron: SkillCronJob = {
 
 /**
  * Cron job for checking timed-out sessions
+ * D-02: Now passes guildId to checkTimeoutSessions to avoid duplicate processing
+ * across multiple guilds (previously each guild triggered a global check)
  */
 const diaryTimeoutCheckCron: SkillCronJob = {
   id: "diary_timeout_check",
@@ -236,7 +244,8 @@ const diaryTimeoutCheckCron: SkillCronJob = {
     const llmClient = createLlmClient(config);
 
     try {
-      await checkTimeoutSessions(config, ctx.client, llmClient);
+      // D-02: Only check sessions for this specific guild
+      await checkTimeoutSessions(config, ctx.client, llmClient, guildId);
     } catch (error) {
       logger.error({ error, guildId }, "Diary timeout check failed");
     }

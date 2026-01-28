@@ -60,13 +60,13 @@ const updateReaction = async (
 ): Promise<void> => {
   try {
     await message.reactions.cache.get(oldEmoji)?.users.remove(message.client.user?.id);
-  } catch {
-    // Ignore errors when removing reaction
+  } catch (error) {
+    logger.debug({ error, messageId: message.id, emoji: oldEmoji }, "Failed to remove reaction");
   }
   try {
     await message.react(newEmoji);
   } catch (error) {
-    // Silently ignore reaction errors
+    logger.debug({ error, messageId: message.id, emoji: newEmoji }, "Failed to add reaction");
   }
 };
 
@@ -82,13 +82,13 @@ async function handleVoiceMessage(
   // Update reaction: remove queued emoji if present, add processing emoji
   try {
     await message.reactions.cache.get(EMOJI_QUEUED)?.users.remove(message.client.user?.id);
-  } catch {
-    // Ignore errors when removing queued reaction
+  } catch (error) {
+    logger.debug({ error, messageId: message.id }, "Failed to remove queued reaction");
   }
   try {
     await message.react(EMOJI_PROCESSING);
-  } catch {
-    // Ignore reaction errors
+  } catch (error) {
+    logger.debug({ error, messageId: message.id }, "Failed to add processing reaction");
   }
 
   try {
@@ -137,8 +137,8 @@ async function handleVoiceMessage(
         attempts: 1,
         timestamp: Date.now(),
       });
-    } catch {
-      // Ignore thread creation errors
+    } catch (error) {
+      logger.debug({ error, messageId: message.id }, "Failed to create error thread");
     }
   }
 }
@@ -182,8 +182,8 @@ const voiceMessageHandler: MessageHandler = {
     // Add queued reaction and enqueue for processing
     try {
       await message.react(EMOJI_QUEUED);
-    } catch {
-      // Ignore reaction errors
+    } catch (error) {
+      logger.debug({ error, messageId: message.id }, "Failed to add queued reaction");
     }
     voiceQueue.enqueue(message, audioAttachment, config);
   },
@@ -246,8 +246,8 @@ const retryReactionHandler: ReactionHandler = {
           .get(EMOJI_ERROR)
           ?.users.remove(starterMessage.client.user?.id);
         await starterMessage.react(EMOJI_SUCCESS);
-      } catch {
-        // Ignore reaction errors
+      } catch (error) {
+        logger.debug({ error, messageId: starterMessage.id }, "Failed to update reaction on retry success");
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
