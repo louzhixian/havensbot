@@ -721,29 +721,29 @@ interface Skill {
 
 ### P1 应该修（18 项）
 
-| ID | 问题 | Skill |
-|----|------|-------|
-| V-01 | 内存缓存无法跨实例共享 | Voice |
-| V-02 | setInterval 在模块级别 | Voice |
-| V-03 | 错误处理过于静默 | Voice |
-| V-04 | 缺少网络请求重试 | Voice |
-| R-01 | 内存缓存无法跨实例共享 | Readings |
-| R-03 | 并发创建可能重复 | Readings |
-| R-04 | Q&A 没有长度限制 | Readings |
-| R-05 | 错误时缺少用户反馈 | Readings |
-| E-03 | 翻译长文章缺少进度 | Editorial |
-| E-04 | 超时设置硬编码 | Editorial |
-| D-02 | 超时检查 cron 全局 vs Guild | Diary |
-| D-03 | 缺少会话恢复机制 | Diary |
-| D-04 | 无并发会话限制 | Diary |
-| F-01 | 内存缓存无法跨实例共享 | Favorites |
-| F-02 | 重复的 ensureMessage | Favorites |
-| F-04 | DeepDive 缺少进度指示 | Favorites |
-| G-01 | 缺少增量摘要机制 | Digest |
-| G-03 | /run 命令缺少幂等性 | Digest |
-| C-03 | 类型安全不足 | 通用 |
-| C-04 | 缺少统一错误边界 | 通用 |
-| C-05 | 缺少 Skill 生命周期钩子 | 通用 |
+| ID | 问题 | Skill | 状态 |
+|----|------|-------|------|
+| V-01 | 内存缓存无法跨实例共享 | Voice | ✅ 2026-01-29 |
+| V-02 | setInterval 在模块级别 | Voice | |
+| V-03 | 错误处理过于静默 | Voice | ✅ 2026-01-29 |
+| V-04 | 缺少网络请求重试 | Voice | |
+| R-01 | 内存缓存无法跨实例共享 | Readings | ✅ 2026-01-29 |
+| R-03 | 并发创建可能重复 | Readings | |
+| R-04 | Q&A 没有长度限制 | Readings | |
+| R-05 | 错误时缺少用户反馈 | Readings | ✅ 2026-01-29 |
+| E-03 | 翻译长文章缺少进度 | Editorial | ✅ 2026-01-29 |
+| E-04 | 超时设置硬编码 | Editorial | |
+| D-02 | 超时检查 cron 全局 vs Guild | Diary | ✅ 2026-01-29 |
+| D-03 | 缺少会话恢复机制 | Diary | |
+| D-04 | 无并发会话限制 | Diary | |
+| F-01 | 内存缓存无法跨实例共享 | Favorites | ✅ 2026-01-29 |
+| F-02 | 重复的 ensureMessage | Favorites | |
+| F-04 | DeepDive 缺少进度指示 | Favorites | ✅ 2026-01-29 |
+| G-01 | 缺少增量摘要机制 | Digest | |
+| G-03 | /run 命令缺少幂等性 | Digest | |
+| C-03 | 类型安全不足 | 通用 | |
+| C-04 | 缺少统一错误边界 | 通用 | |
+| C-05 | 缺少 Skill 生命周期钩子 | 通用 | ✅ 2026-01-28 |
 
 ### P2 可以修（9 项）
 
@@ -764,11 +764,12 @@ interface Skill {
 
 ### Phase 1: 基础设施（1-2 天）
 1. **C-01**: 统一 LLM 调用层，Editorial 使用 createLlmClient ✅
-2. **C-02**: 设计缓存持久化方案（Redis 或 DB）
-3. **C-05**: 添加 Skill 生命周期钩子
+2. **C-02**: 设计缓存持久化方案（Redis 或 DB） ✅
+3. **C-05**: 添加 Skill 生命周期钩子 ✅
 
 #### Phase 1 进度
 - C-01 ✅ (2026-01-28): Editorial 的 `editorial-translation.ts` 和 `editorial-discussion.ts` 已改用 `createLlmClient`，移除了自定义的 `callOpenAiCompat` 和 `isLlmEnabled` 函数
+- C-01 ✅ (2026-01-29): 补漏 - `editorial.skill.ts` 中的 `callOpenAiCompat` 已替换为 `createLlmClient` 工厂函数，使用 `callLlm` 包装函数
 - C-02 ✅ (2026-01-28): 创建 `CacheEntry` Prisma model 和 `CacheStore` 工具类
   - 添加 `prisma/schema.prisma` 中的 `CacheEntry` model（支持 namespace 隔离、TTL）
   - 创建 `apps/arkcore/src/utils/cache-store.ts`，提供 get/set/delete/cleanup/getMany/setMany/touch API
@@ -803,6 +804,18 @@ interface Skill {
   - Forum 模式下，在帖子中发送失败通知："⚠️ 以下频道摘要生成失败: #channel1, #channel2"
   - 添加详细的日志记录：每次重试都有 warn 日志，最终失败有 error 日志
   - 运行完成后输出汇总日志（总频道数、成功数、失败数、失败频道列表）
+
+### Phase 2.5: 内存缓存迁移（2026-01-29）
+- V-01 ✅ (2026-01-29): voice/retryCache.ts 迁移到 CacheStore
+  - 使用 `voice_retry` namespace，TTL 24 小时
+  - 所有方法改为异步（set/get/canRetry/incrementAttempts/cleanup）
+  - 更新 voice.skill.ts 和 voiceHandler.ts 中的调用为 await
+- F-01 ✅ (2026-01-29): favorites.skill.ts 的 deeperMessages 迁移到 CacheStore
+  - 使用 `favorites_deeper` namespace，TTL 1 小时
+  - 添加 `wasDeeperForwarded()` 异步函数替代 `deeperMessages.has()`
+- R-01 ✅ (2026-01-29): readings.skill.ts 的 bookmarkedMessages 迁移到 CacheStore
+  - 使用 `readings_bookmarked` namespace，TTL 1 小时
+  - `wasBookmarked/markPending/clearPending/markBookmarked` 全部改为异步
 
 ### Phase 3: 体验优化（2-3 天）
 7. **E-03, F-04**: 进度反馈
