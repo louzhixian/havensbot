@@ -6,6 +6,7 @@ export type DeepDiveForumResult = {
   thread: ThreadChannel;
   threadId: string;
   markCompleted: () => Promise<void>;
+  markFailed: () => Promise<void>;
 };
 
 export const createDeepDiveForumPost = async (
@@ -67,9 +68,29 @@ export const createDeepDiveForumPost = async (
     }
   };
 
+  // Helper to update tag to "failed" when generation fails
+  const markFailed = async (): Promise<void> => {
+    try {
+      const forum = await client.channels.fetch(forumId);
+      if (!forum || forum.type !== ChannelType.GuildForum) return;
+
+      const forumChannel = forum as ForumChannel;
+      const failedTag = forumChannel.availableTags.find(
+        (t) => t.name.toLowerCase() === "failed"
+      );
+
+      if (failedTag) {
+        await thread.edit({ appliedTags: [failedTag.id] });
+      }
+    } catch (error) {
+      console.error("Failed to update deep-dive tag to failed:", error);
+    }
+  };
+
   return {
     thread: thread as ThreadChannel,
     threadId,
     markCompleted,
+    markFailed,
   };
 };

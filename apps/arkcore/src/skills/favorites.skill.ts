@@ -143,13 +143,22 @@ const handleEyesReaction = async (
     await forumResult.thread.send({ content: "正在生成深度解读，请稍候..." });
 
     const config = loadConfig();
-    const result = await generateDeepDive(config, itemUrl);
-    const chunks = splitMessageContent(result.content, 1800);
-    for (const chunk of chunks) {
-      await forumResult.thread.send({ content: chunk });
-      await sleep(config.digestThreadThrottleMs);
+    try {
+      const result = await generateDeepDive(config, itemUrl);
+      const chunks = splitMessageContent(result.content, 1800);
+      for (const chunk of chunks) {
+        await forumResult.thread.send({ content: chunk });
+        await sleep(config.digestThreadThrottleMs);
+      }
+      await forumResult.markCompleted();
+    } catch (error) {
+      ctx.logger.error({ error, itemUrl }, "DeepDive generation failed");
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await forumResult.thread.send({
+        content: `❌ 生成失败: ${errorMessage}\n\n请稍后重试或检查链接是否有效。`,
+      });
+      await forumResult.markFailed();
     }
-    await forumResult.markCompleted();
   }
 };
 

@@ -34,6 +34,7 @@ import {
 import { logger } from "../observability/logger.js";
 import { createLlmClient } from "../llm/client.js";
 import { generateReadingsResponse } from "../readings/llm.js";
+import { CacheStore } from "../utils/cache-store.js";
 
 const BOOKMARK_EMOJI = "🔖";
 const MAX_BOOKMARK_CACHE = 1000;
@@ -42,23 +43,28 @@ const bookmarkedMessages = new Map<
   { threadId: string; createdAt: number }
 >();
 
-/** Map thread ID to original article URL for Q&A context */
-const threadArticleUrls = new Map<string, string>();
-const MAX_THREAD_URL_CACHE = 500;
+/**
+ * Persistent cache for thread article URLs (R-02 fix).
+ * Uses database-backed CacheStore instead of in-memory Map to survive restarts.
+ * URLs have a 30-day TTL to prevent unbounded growth.
+ */
+const threadArticleUrlCache = new CacheStore("readings_thread_url");
+const THREAD_URL_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 const PENDING_MARKER = "__pending__";
 
-const setThreadArticleUrl = (threadId: string, url: string): void => {
-  threadArticleUrls.set(threadId, url);
-  if (threadArticleUrls.size <= MAX_THREAD_URL_CACHE) return;
-  const oldest = threadArticleUrls.keys().next().value;
-  if (oldest) {
-    threadArticleUrls.delete(oldest);
-  }
+/**
+ * Store article URL for a thread in persistent cache.
+ */
+const setThreadArticleUrl = async (threadId: string, url: string): Promise<void> => {
+  await threadArticleUrlCache.set(threadId, url, THREAD_URL_TTL_MS);
 };
 
-const getThreadArticleUrl = (threadId: string): string | undefined => {
-  return threadArticleUrls.get(threadId);
+/**
+ * Retrieve article URL for a thread from persistent cache.
+ */
+const getThreadArticleUrl = async (threadId: string): Promise<string | null> => {
+  return threadArticleUrlCache.get<string>(threadId);
 };
 
 const wasBookmarked = (messageId: string): boolean =>
@@ -192,10 +198,10 @@ const bookmarkReactionHandler: ReactionHandler = {
       // Mark as bookmarked immediately after thread creation to prevent duplicates
       markBookmarked(message.id, thread.id);
 
-      // Extract and store article URL for Q&A
+      // Extract and store article URL for Q&A (persisted to database)
       const articleUrl = extractArticleUrl(message);
       if (articleUrl) {
-        setThreadArticleUrl(thread.id, articleUrl);
+        await setThreadArticleUrl(thread.id, articleUrl);
       }
 
       // Send attachments if any (best effort)
@@ -330,8 +336,8 @@ const readingsQAHandler: MessageHandler = {
     const readingsForumId = readingsConfig?.channelId;
     if (!readingsForumId || thread.parentId !== readingsForumId) return;
 
-    // Get the article URL for this thread
-    const articleUrl = getThreadArticleUrl(thread.id);
+    // Get the article URL for this thread (from persistent cache)
+    const articleUrl = await getThreadArticleUrl(thread.id);
     if (!articleUrl) {
       // No URL stored - might be an older thread before Q&A was added
       return;

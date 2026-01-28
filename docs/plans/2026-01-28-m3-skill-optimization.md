@@ -785,6 +785,25 @@ interface Skill {
 5. **F-03**: DeepDive 错误恢复
 6. **G-02**: Digest 重试机制
 
+#### Phase 2 进度
+- R-02 ✅ (2026-01-28): 修复 threadArticleUrls 持久化问题
+  - 将内存 Map 替换为 `CacheStore`（使用 `readings_thread_url` namespace）
+  - `setThreadArticleUrl()` 和 `getThreadArticleUrl()` 改为异步函数，从数据库读写
+  - 添加 30 天 TTL 防止无限增长
+  - 服务重启后 Q&A 功能将正常工作
+- F-03 ✅ (2026-01-28): DeepDive 错误恢复
+  - 在 `favorites.skill.ts` 的 `handleEyesReaction` 中添加 try-catch
+  - 生成失败时发送错误消息给用户："❌ 生成失败: {error}"
+  - 在 `deep-dive-forum.ts` 添加 `markFailed()` 方法，将标签从 "analyzing" 改为 "failed"
+  - 用户不再看到永远卡在 "正在生成" 状态的帖子
+- G-02 ✅ (2026-01-28): Digest 重试机制
+  - 添加 `processChannelWithRetry()` 函数，支持最多 2 次重试（共 3 次尝试）
+  - 重试间隔 5 秒，使用 exponential backoff 可防止临时网络波动
+  - 失败频道记录在 `failedChannels` 数组中
+  - Forum 模式下，在帖子中发送失败通知："⚠️ 以下频道摘要生成失败: #channel1, #channel2"
+  - 添加详细的日志记录：每次重试都有 warn 日志，最终失败有 error 日志
+  - 运行完成后输出汇总日志（总频道数、成功数、失败数、失败频道列表）
+
 ### Phase 3: 体验优化（2-3 天）
 7. **E-03, F-04**: 进度反馈
 8. **V-03, R-05**: 错误消息改善
