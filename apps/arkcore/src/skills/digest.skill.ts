@@ -111,7 +111,8 @@ const formatDigestDate = (date: Date, timeZone: string): string => {
 const runDigestForGuild = async (
   ctx: SkillContext,
   guildId: string,
-  settings: GuildSettings
+  settings: GuildSettings,
+  force = false // G-01: Allow force regeneration
 ): Promise<void> => {
   const config = loadConfig();
   const guild = ctx.client.guilds.cache.get(guildId);
@@ -174,6 +175,17 @@ const runDigestForGuild = async (
 
     let thread = await findTodayDigestPost(ctx.client, digestForumId, dateStr);
 
+    // G-01: Skip processing if today's digest already exists (incremental digest)
+    if (thread && !force) {
+      ctx.logger.info(
+        { guildId, threadId: thread.id, dateStr },
+        "Today's digest already exists, skipping (use /digest run --force to regenerate)"
+      );
+      return;
+    }
+
+    // If force=true and thread exists, we'll reuse the thread and append content
+    // Otherwise, create a new digest post
     if (!thread) {
       const { rangeStart, rangeEnd } = await resolveDigestRange(channelsToProcess[0].channelId);
       thread = await createDailyDigestPost(
@@ -186,6 +198,8 @@ const runDigestForGuild = async (
         timezone
       );
       ctx.logger.info({ guildId, threadId: thread.id }, "Created forum digest post");
+    } else {
+      ctx.logger.info({ guildId, threadId: thread.id }, "Reusing existing digest post (force=true)");
     }
 
     // Create initial progress message
@@ -323,35 +337,9 @@ const runDigestCommand: SkillCommand = {
 
     await interaction.deferReply();
 
-    // G-03: Check if today's digest already exists (forum mode only)
-    const config = loadConfig();
-    const digestOutputConfig = await getConfigByRole(guildId, "digest_output");
-    const digestForumId = digestOutputConfig?.channelId;
-
-    if (digestForumId && !force) {
-      const timezone = getGuildTimezone(settings, config);
-      const now = new Date();
-      const dateStr = formatDigestDate(now, timezone);
-      const existingThread = await findTodayDigestPost(ctx.client, digestForumId, dateStr);
-
-      if (existingThread) {
-        // Check if thread already has digest content (more than just the initial message)
-        const messages = await existingThread.messages.fetch({ limit: 5 });
-        const hasContent = messages.size > 1; // More than just the initial status message
-
-        if (hasContent) {
-          await interaction.editReply({
-            content:
-              `⚠️ 今天的 Digest 已经存在 (<#${existingThread.id}>)。\n` +
-              `如果需要重新生成，请使用 \`/digest run force:true\`。`,
-          });
-          return;
-        }
-      }
-    }
-
+    // G-01: Pass force parameter to runDigestForGuild for incremental digest control
     try {
-      await runDigestForGuild(ctx, guildId, settings);
+      await runDigestForGuild(ctx, guildId, settings, force);
       await interaction.editReply({ content: "Digest completed!" });
     } catch (error) {
       ctx.logger.error({ error, guildId }, "Digest command failed");
