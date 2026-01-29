@@ -373,10 +373,6 @@ export function registerVoiceHandler(client: Client, config: AppConfig): void {
     }
   });
 
-  // Set up periodic cleanup of retry cache
-  setInterval(async () => {
-    await retryCache.cleanup();
-  }, 60 * 60 * 1000); // Every hour
-
+  // V-02: Cleanup interval moved to voice.skill.ts lifecycle hooks
   logger.info("Voice message handler registered");
 }

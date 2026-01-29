@@ -274,10 +274,8 @@ const retryReactionHandler: ReactionHandler = {
 // Set up the queue processor (module-level initialization)
 voiceQueue.setProcessor(handleVoiceMessage);
 
-// Set up periodic cleanup of retry cache (every hour)
-setInterval(async () => {
-  await retryCache.cleanup();
-}, 60 * 60 * 1000);
+// V-02: Store cleanup interval ID for lifecycle management
+let cleanupIntervalId: NodeJS.Timeout | null = null;
 
 export const voiceSkill: Skill = {
   id: "voice",
@@ -289,4 +287,28 @@ export const voiceSkill: Skill = {
   reactions: [retryReactionHandler],
 
   channelRoles: ["editorial"],
+
+  // V-02: Use lifecycle hooks to manage periodic cleanup
+  onBotReady: async (ctx) => {
+    // Start periodic cleanup of retry cache (every hour)
+    cleanupIntervalId = setInterval(async () => {
+      try {
+        await retryCache.cleanup();
+        ctx.logger.debug("Voice retry cache cleanup completed");
+      } catch (error) {
+        ctx.logger.warn({ error }, "Voice retry cache cleanup failed");
+      }
+    }, 60 * 60 * 1000);
+    
+    ctx.logger.info("Voice skill: cleanup interval started");
+  },
+
+  onBotStop: async (ctx) => {
+    // Stop the cleanup interval on shutdown
+    if (cleanupIntervalId) {
+      clearInterval(cleanupIntervalId);
+      cleanupIntervalId = null;
+      ctx.logger.info("Voice skill: cleanup interval stopped");
+    }
+  },
 };
