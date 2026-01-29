@@ -304,6 +304,14 @@ const digestCronJob: SkillCronJob = {
 const runDigestCommand: SkillCommand = {
   name: "run",
   description: "Run digest now for this guild",
+  options: [
+    {
+      type: 5, // Boolean
+      name: "force",
+      description: "Force re-generation even if today's digest already exists",
+      required: false,
+    },
+  ],
   execute: async (ctx, interaction, settings) => {
     const guildId = interaction.guildId;
     if (!guildId) {
@@ -311,7 +319,36 @@ const runDigestCommand: SkillCommand = {
       return;
     }
 
+    const force = interaction.options.getBoolean("force") ?? false;
+
     await interaction.deferReply();
+
+    // G-03: Check if today's digest already exists (forum mode only)
+    const config = loadConfig();
+    const digestOutputConfig = await getConfigByRole(guildId, "digest_output");
+    const digestForumId = digestOutputConfig?.channelId;
+
+    if (digestForumId && !force) {
+      const timezone = getGuildTimezone(settings, config);
+      const now = new Date();
+      const dateStr = formatDigestDate(now, timezone);
+      const existingThread = await findTodayDigestPost(ctx.client, digestForumId, dateStr);
+
+      if (existingThread) {
+        // Check if thread already has digest content (more than just the initial message)
+        const messages = await existingThread.messages.fetch({ limit: 5 });
+        const hasContent = messages.size > 1; // More than just the initial status message
+
+        if (hasContent) {
+          await interaction.editReply({
+            content:
+              `⚠️ 今天的 Digest 已经存在 (<#${existingThread.id}>)。\n` +
+              `如果需要重新生成，请使用 \`/digest run force:true\`。`,
+          });
+          return;
+        }
+      }
+    }
 
     try {
       await runDigestForGuild(ctx, guildId, settings);

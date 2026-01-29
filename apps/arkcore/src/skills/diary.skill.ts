@@ -108,12 +108,13 @@ const diaryStartButtonHandler: ButtonHandler = {
       const config = loadConfig();
       const llmClient = createLlmClient(config);
 
-      // Start the session in this thread
+      // Start the session in this thread (D-04: pass userId for concurrency limit)
       const result = await startDiarySessionInThread(
         config,
         ctx.client,
         llmClient,
-        threadId
+        threadId,
+        interaction.user.id
       );
 
       // Disable the start button

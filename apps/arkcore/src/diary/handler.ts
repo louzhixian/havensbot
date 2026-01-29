@@ -97,12 +97,13 @@ export const registerDiaryButtonHandler = (
           return;
         }
 
-        // Start the session in this thread
+        // Start the session in this thread (D-04: pass userId for concurrency limit)
         const result = await startDiarySessionInThread(
           config,
           client,
           llmClient,
-          threadId
+          threadId,
+          interaction.user.id
         );
 
         // Disable the start button

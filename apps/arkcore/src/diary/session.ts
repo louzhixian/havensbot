@@ -64,12 +64,14 @@ export const createDailyDiaryPost = async (
 
 /**
  * Start a diary session in an existing thread (for forum post workflow)
+ * @param userId - Discord user ID who is starting the session (D-04: for concurrency limit)
  */
 export const startDiarySessionInThread = async (
   config: AppConfig,
   client: Client,
   llmClient: LlmClient,
-  threadId: string
+  threadId: string,
+  userId: string
 ): Promise<DiaryStartResult> => {
   const now = new Date();
 
@@ -96,6 +98,21 @@ export const startDiarySessionInThread = async (
     throw new Error("Cannot determine guild for thread");
   }
 
+  // D-04: Check if user already has an active session in this guild
+  const userActiveSession = await prisma.diarySession.findFirst({
+    where: {
+      guildId,
+      userId,
+      endedAt: null,
+    },
+  });
+
+  if (userActiveSession) {
+    throw new Error(
+      `You already have an active diary session in thread <#${userActiveSession.threadId}>. Please end that session first.`
+    );
+  }
+
   // Generate opening message
   const openingMessage = await generateOpeningMessage(config, llmClient);
 
@@ -107,6 +124,7 @@ export const startDiarySessionInThread = async (
   const session = await prisma.diarySession.create({
     data: {
       guildId,
+      userId, // D-04: Store user ID for concurrency checking
       date: todayStart,
       threadId,
       channelId,

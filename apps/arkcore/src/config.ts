@@ -47,6 +47,9 @@ export type AppConfig = {
   diaryTimeoutMinutes: number;
   diaryContextDays: number;
   diaryExportPath: string;
+  // Article fetching (E-04: Editorial/DeepDive timeout configuration)
+  articleFetchTimeoutMs: number;
+  articleFetchMaxLength: number;
 };
 
 const requireEnv = (key: string): string => {
@@ -150,5 +153,8 @@ export const loadConfig = (): AppConfig => {
     diaryTimeoutMinutes: parsePositiveInt(process.env.DIARY_TIMEOUT_MINUTES, 180),
     diaryContextDays: parsePositiveInt(process.env.DIARY_CONTEXT_DAYS, 7),
     diaryExportPath: process.env.DIARY_EXPORT_PATH || "/data/diaries",
+    // Article fetching (E-04: Editorial/DeepDive timeout configuration)
+    articleFetchTimeoutMs: parsePositiveInt(process.env.ARTICLE_FETCH_TIMEOUT_MS, 12000),
+    articleFetchMaxLength: parsePositiveInt(process.env.ARTICLE_FETCH_MAX_LENGTH, 100000), // 100KB
   };
 };

@@ -151,15 +151,15 @@ export const generateDeepDive = async (
   let fetched =
     (githubRawUrl
       ? await fetchRawText(githubRawUrl, {
-          timeoutMs: 12000,
+          timeoutMs: config.articleFetchTimeoutMs, // E-04: Use config value
           maxLength: maxChars,
         })
       : null) ?? "";
   if (!fetched) {
     fetched =
       (await fetchArticleText(item.url, {
-        timeoutMs: 12000,
-        maxLength: maxChars ?? Number.MAX_SAFE_INTEGER,
+        timeoutMs: config.articleFetchTimeoutMs, // E-04: Use config value
+        maxLength: maxChars ?? config.articleFetchMaxLength, // E-04: Use config value
       })) ?? "";
   }
   const snippet = item.contentSnippet ?? "";

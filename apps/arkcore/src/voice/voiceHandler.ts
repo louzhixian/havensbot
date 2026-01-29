@@ -22,6 +22,7 @@ import { retryCache } from "./retryCache.js";
 import { polishTranscript } from "./textPolisher.js";
 import { voiceQueue } from "./voiceQueue.js";
 import { transcribe } from "./whisperClient.js";
+import { withRetry } from "../utils/retry-utils.js"; // V-04: Add retry support for downloads
 
 /** Thread name for voice transcription results */
 const THREAD_NAME = "语音转文字";
@@ -42,14 +43,29 @@ const isAudioAttachment = (attachment: Attachment): boolean => {
 
 /**
  * Download audio file from Discord CDN to a buffer
+ * V-04: Uses withRetry for resilience against temporary network issues
  */
 const downloadAudio = async (url: string): Promise<Buffer> => {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to download audio: ${response.status} ${response.statusText}`);
-  }
-  const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  return withRetry(
+    async () => {
+      const response = await fetch(url);
+      if (!response.ok) {
+        const error = new Error(`Failed to download audio: ${response.status} ${response.statusText}`) as any;
+        error.response = { status: response.status };
+        throw error;
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      return Buffer.from(arrayBuffer);
+    },
+    {
+      maxAttempts: 3,
+      initialDelayMs: 1000,
+      backoffMultiplier: 2,
+      onRetry: (error, attempt) => {
+        logger.debug({ error: error.message, attempt, url }, "Retrying audio download");
+      },
+    }
+  );
 };
 
 /**

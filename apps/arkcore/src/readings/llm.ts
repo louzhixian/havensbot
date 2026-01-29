@@ -15,12 +15,23 @@ export const generateReadingsResponse = async (
 ): Promise<string> => {
   // Fetch article content
   let articleContent: string;
+  let wasTruncated = false;
+  
   try {
     const content = await fetchArticleText(articleUrl, {
       maxLength: MAX_ARTICLE_LENGTH,
       timeoutMs: 15000
     });
-    articleContent = content || "[无法获取文章内容]";
+    
+    if (!content) {
+      articleContent = "[无法获取文章内容]";
+    } else {
+      articleContent = content;
+      // R-04: Detect if article was likely truncated
+      // fetchArticleText truncates at maxLength, so if we got exactly maxLength chars,
+      // it's likely the article was longer
+      wasTruncated = content.length >= MAX_ARTICLE_LENGTH;
+    }
   } catch (error) {
     logger.warn({ error, articleUrl }, "Failed to fetch article for Q&A");
     articleContent = "[无法获取文章内容]";
@@ -48,5 +59,12 @@ export const generateReadingsResponse = async (
     throw new Error(response.error || "Failed to generate readings response");
   }
 
-  return response.data;
+  let answer = response.data;
+  
+  // R-04: Inform user if article was truncated
+  if (wasTruncated) {
+    answer += `\n\n_注：文章较长，仅基于前 ${MAX_ARTICLE_LENGTH.toLocaleString()} 字符回答。完整内容请查看原文。_`;
+  }
+
+  return answer;
 };

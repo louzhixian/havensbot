@@ -726,21 +726,21 @@ interface Skill {
 | V-01 | 内存缓存无法跨实例共享 | Voice | ✅ 2026-01-29 |
 | V-02 | setInterval 在模块级别 | Voice | |
 | V-03 | 错误处理过于静默 | Voice | ✅ 2026-01-29 |
-| V-04 | 缺少网络请求重试 | Voice | |
+| V-04 | 缺少网络请求重试 | Voice | ✅ 2026-01-30 |
 | R-01 | 内存缓存无法跨实例共享 | Readings | ✅ 2026-01-29 |
 | R-03 | 并发创建可能重复 | Readings | |
-| R-04 | Q&A 没有长度限制 | Readings | |
+| R-04 | Q&A 没有长度限制 | Readings | ✅ 2026-01-30 |
 | R-05 | 错误时缺少用户反馈 | Readings | ✅ 2026-01-29 |
 | E-03 | 翻译长文章缺少进度 | Editorial | ✅ 2026-01-29 |
-| E-04 | 超时设置硬编码 | Editorial | |
+| E-04 | 超时设置硬编码 | Editorial | ✅ 2026-01-30 |
 | D-02 | 超时检查 cron 全局 vs Guild | Diary | ✅ 2026-01-29 |
 | D-03 | 缺少会话恢复机制 | Diary | |
-| D-04 | 无并发会话限制 | Diary | |
+| D-04 | 无并发会话限制 | Diary | ✅ 2026-01-30 |
 | F-01 | 内存缓存无法跨实例共享 | Favorites | ✅ 2026-01-29 |
-| F-02 | 重复的 ensureMessage | Favorites | |
+| F-02 | 重复的 ensureMessage | Favorites | ✅ 2026-01-30 |
 | F-04 | DeepDive 缺少进度指示 | Favorites | ✅ 2026-01-29 |
 | G-01 | 缺少增量摘要机制 | Digest | |
-| G-03 | /run 命令缺少幂等性 | Digest | |
+| G-03 | /run 命令缺少幂等性 | Digest | ✅ 2026-01-30 |
 | C-03 | 类型安全不足 | 通用 | |
 | C-04 | 缺少统一错误边界 | 通用 | |
 | C-05 | 缺少 Skill 生命周期钩子 | 通用 | ✅ 2026-01-28 |

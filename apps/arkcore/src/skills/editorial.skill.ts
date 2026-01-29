@@ -322,7 +322,8 @@ const fetchAttachmentText = async (url: string): Promise<string | null> => {
 };
 
 const resolveTranslationInput = async (
-  message: Message
+  message: Message,
+  config: AppConfig // E-04: Added config parameter for timeout configuration
 ): Promise<{
   content: string;
   sourceUrl?: string;
@@ -350,8 +351,8 @@ const resolveTranslationInput = async (
       (rawUrl ? await fetchRawText(rawUrl) : null) ||
       (url
         ? await fetchArticleText(url, {
-            timeoutMs: 12000,
-            maxLength: Number.MAX_SAFE_INTEGER,
+            timeoutMs: config.articleFetchTimeoutMs, // E-04: Use config value
+            maxLength: config.articleFetchMaxLength, // E-04: Use config value
           })
         : null);
     if (!fetched) return null;
@@ -453,7 +454,7 @@ const editorialChannelHandler: MessageHandler = {
     // Non-forwarded message → Translation
     if (hasThread(message)) return;
 
-    const input = await resolveTranslationInput(message);
+    const input = await resolveTranslationInput(message, config); // E-04: Pass config
     if (!input) return;
 
     if (!isLlmEnabled(config)) {

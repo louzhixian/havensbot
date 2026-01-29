@@ -35,6 +35,7 @@ import { logger } from "../observability/logger.js";
 import { createLlmClient } from "../llm/client.js";
 import { generateReadingsResponse } from "../readings/llm.js";
 import { CacheStore } from "../utils/cache-store.js";
+import { prisma } from "../db.js";
 
 const BOOKMARK_EMOJI = "🔖";
 
@@ -168,10 +169,42 @@ const bookmarkReactionHandler: ReactionHandler = {
     // Mark as pending to prevent concurrent duplicate creation
     await markPending(message.id);
 
+    // R-03: Track the database record for cleanup on failure
+    let bookmarkRecordId: string | null = null;
+
     try {
-      // Generate post title
+      // Generate post title and article URL early (needed for database record)
       const title = generatePostTitle(message);
       const messageLink = buildMessageLink(message);
+      const articleUrl = extractArticleUrl(message);
+
+      // R-03: Create database record first with unique constraint to prevent duplicates
+      // If another instance is creating this bookmark concurrently, one will fail with P2002
+      try {
+        const bookmarkRecord = await prisma.readingBookmark.create({
+          data: {
+            guildId: message.guild.id,
+            messageId: message.id,
+            threadId: "", // Will update after thread creation
+            channelId: message.channelId,
+            userId: user.id,
+            articleUrl,
+          },
+        });
+        bookmarkRecordId = bookmarkRecord.id;
+      } catch (dbError: any) {
+        // P2002: Unique constraint violation - another instance already created this bookmark
+        if (dbError.code === "P2002") {
+          logger.info(
+            { messageId: message.id, guildId: message.guild.id },
+            "Bookmark already exists (concurrent creation prevented)"
+          );
+          await clearPending(message.id);
+          return;
+        }
+        // Other database errors should be thrown
+        throw dbError;
+      }
 
       // Build content (truncate to Discord limit)
       const truncatedContent = truncate(message.content || "", 2000);
@@ -191,11 +224,16 @@ const bookmarkReactionHandler: ReactionHandler = {
         }
       );
 
-      // Mark as bookmarked immediately after thread creation to prevent duplicates
+      // Update the bookmark record with the actual thread ID
+      await prisma.readingBookmark.update({
+        where: { id: bookmarkRecordId! },
+        data: { threadId: thread.id },
+      });
+
+      // Mark as bookmarked in cache for fast lookups
       await markBookmarked(message.id, thread.id);
 
-      // Extract and store article URL for Q&A (persisted to database)
-      const articleUrl = extractArticleUrl(message);
+      // Store article URL for Q&A (persisted to database)
       if (articleUrl) {
         await setThreadArticleUrl(thread.id, articleUrl);
       }
@@ -241,6 +279,24 @@ const bookmarkReactionHandler: ReactionHandler = {
         "Bookmark created"
       );
     } catch (innerError) {
+      // R-03: Clean up database record if it was created
+      if (bookmarkRecordId) {
+        try {
+          await prisma.readingBookmark.delete({
+            where: { id: bookmarkRecordId },
+          });
+          logger.debug(
+            { bookmarkRecordId, messageId: message.id },
+            "Cleaned up orphaned bookmark record after failure"
+          );
+        } catch (cleanupError) {
+          logger.warn(
+            { error: cleanupError, bookmarkRecordId },
+            "Failed to clean up bookmark record"
+          );
+        }
+      }
+      
       // Clear pending on failure so the message can be retried
       await clearPending(message.id);
       throw innerError;

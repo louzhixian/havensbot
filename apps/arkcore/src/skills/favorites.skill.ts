@@ -15,6 +15,7 @@ import { sleep } from "../utils.js";
 import { loadConfig } from "../config.js";
 import { markForwarded, wasForwarded } from "../favorites.js";
 import { CacheStore } from "../utils/cache-store.js";
+import { ensureMessage } from "../utils/discord.js"; // F-02: Use centralized utility
 
 const HEART_EMOJIS = ["❤", "♥"];
 const EYES_EMOJIS = ["👀"];
@@ -51,15 +52,7 @@ const wasDeeperForwarded = async (messageId: string): Promise<boolean> => {
   return deeperMessagesCache.has(messageId);
 };
 
-const ensureMessage = async (
-  reaction: MessageReaction | PartialMessageReaction
-): Promise<Message | null> => {
-  const fullReaction = reaction.partial ? await reaction.fetch() : reaction;
-  const message = fullReaction.message.partial
-    ? await fullReaction.message.fetch()
-    : fullReaction.message;
-  return message ?? null;
-};
+// F-02: ensureMessage moved to utils/discord.ts
 
 const extractItemUrl = (message: Message): string | null => {
   const embedUrl = message.embeds.find((embed) => typeof embed.url === "string")?.url;
