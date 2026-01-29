@@ -739,7 +739,7 @@ interface Skill {
 | F-01 | 内存缓存无法跨实例共享 | Favorites | ✅ 2026-01-29 |
 | F-02 | 重复的 ensureMessage | Favorites | ✅ 2026-01-30 |
 | F-04 | DeepDive 缺少进度指示 | Favorites | ✅ 2026-01-29 |
-| G-01 | 缺少增量摘要机制 | Digest | |
+| G-01 | 缺少增量摘要机制 | Digest | ✅ 2026-01-30 |
 | G-03 | /run 命令缺少幂等性 | Digest | ✅ 2026-01-30 |
 | C-03 | 类型安全不足 | 通用 | |
 | C-04 | 缺少统一错误边界 | 通用 | |
