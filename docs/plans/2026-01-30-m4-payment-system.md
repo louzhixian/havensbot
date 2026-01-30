@@ -187,35 +187,37 @@ async function callLLM(guildId: string, messages: Message[]): Promise<string> {
 
 ### P0: 核心订阅流程
 
-| # | 任务 | 预估 | 依赖 |
+| # | 任务 | 预估 | 状态 |
 |---|------|------|------|
-| 1 | Prisma schema 更新（Subscription, BillingEvent） | 1h | - |
-| 2 | LemonSqueezy SDK 集成 + 测试 | 2h | 1 |
-| 3 | `/subscribe` 命令：生成 checkout URL | 2h | 2 |
-| 4 | Webhook endpoint: `/api/webhooks/lemonsqueezy` | 3h | 2 |
-| 5 | 处理 `subscription_created` 事件 | 2h | 4 |
-| 6 | 处理 `subscription_updated` 事件（续费） | 1h | 4 |
-| 7 | 处理 `subscription_canceled` 事件 | 1h | 4 |
-| 8 | 端到端测试：Free → Premium → Cancel | 2h | 7 |
+| 1 | Prisma schema 更新（Subscription, BillingEvent） | 1h | ✅ |
+| 2 | LemonSqueezy SDK 集成 + 测试 | 2h | ✅ |
+| 3 | `/subscribe` 命令：生成 checkout URL | 2h | ✅ |
+| 4 | Webhook endpoint: `/api/webhooks/lemonsqueezy` | 3h | ✅ |
+| 5 | 处理 `subscription_created` 事件 | 2h | ✅ |
+| 6 | 处理 `subscription_updated` 事件（续费） | 1h | ✅ |
+| 7 | 处理 `subscription_canceled` 事件 | 1h | ✅ |
+| 8 | 端到端测试：Free → Premium → Cancel | 2h | ⏸️ (需实际配置) |
 
 ### P1: 配额管理
 
-| # | 任务 | 预估 | 依赖 |
+| # | 任务 | 预估 | 状态 |
 |---|------|------|------|
-| 9 | LLM 调用拦截器（tier + quota 检查） | 2h | 1 |
-| 10 | 配额重置 cron job | 1h | 1 |
-| 11 | QuotaExceededError 友好提示 | 1h | 9 |
-| 12 | `/billing` 命令：展示用量 + 续费日期 | 2h | 1 |
+| 9 | LLM 调用拦截器（tier + quota 检查） | 2h | ✅ |
+| 10 | 配额重置 cron job | 1h | ✅ |
+| 11 | QuotaExceededError 友好提示 | 1h | ✅ |
+| 12 | `/billing` 命令：展示用量 + 续费日期 | 2h | ✅ |
 
 ### P2: 完善体验
 
-| # | 任务 | 预估 | 依赖 |
+| # | 任务 | 预估 | 状态 |
 |---|------|------|------|
-| 13 | `/cancel` 命令：取消订阅（保留到期末） | 2h | 2 |
-| 14 | 订阅成功 Discord 通知（带欢迎 + 使用指南） | 1h | 5 |
-| 15 | 订阅到期提醒（提前 3 天） | 1h | 6 |
-| 16 | 支付失败处理 + 重试提示 | 2h | 4 |
-| 17 | 管理员命令：手动调整配额/tier | 1h | - |
+| 13 | `/cancel` 命令：取消订阅（保留到期末） | 2h | ✅ |
+| 14 | 订阅成功 Discord 通知（带欢迎 + 使用指南） | 1h | ✅ |
+| 15 | 订阅到期提醒（提前 3 天） | 1h | ✅ |
+| 16 | 支付失败处理 + 重试提示 | 2h | ✅ |
+| 17 | 管理员命令：手动调整配额/tier | 1h | ✅ |
+
+**完成度**: 16/17 (94%)
 
 ---
 
@@ -330,5 +332,93 @@ async function callLLM(guildId: string, messages: Message[]): Promise<string> {
 
 ---
 
-_创建于 2026-01-30_
-_预估总工时：P0 (14h) + P1 (6h) + P2 (7h) = 27h_
+## ✅ 实施总结 (2026-01-30)
+
+### 完成状态
+- **P0**: 7/8 完成 (87.5%)
+- **P1**: 4/4 完成 (100%) ✅
+- **P2**: 5/5 完成 (100%) ✅
+- **总计**: 16/17 完成 (94%)
+
+### 已实现功能
+
+**核心订阅流程**:
+- ✅ Prisma schema (Subscription, BillingEvent, llmQuotaResetAt)
+- ✅ LemonSqueezy SDK 集成 (`@lemonsqueezy/lemonsqueezy.js`)
+- ✅ `/subscribe` 命令（生成 checkout URL）
+- ✅ `/billing` 命令（显示订阅状态和用量）
+- ✅ `/cancel` 命令（取消订阅，保留到期末）
+- ✅ Webhook 处理（subscription_created/updated/cancelled/payment_success/payment_failed/payment_recovered）
+- ✅ Express HTTP server（接收 webhooks）
+- ✅ HMAC-SHA256 签名验证（防时序攻击）
+
+**配额管理系统**:
+- ✅ LLM Service (`llm.service.ts`) - 统一调用接口
+- ✅ Tier 和 Quota 检查（Free tier 拒绝，Premium tier 检查配额）
+- ✅ 自定义错误类型（QuotaExceededError, TierRestrictedError）
+- ✅ 配额重置 cron job（每小时检查，重置过期配额）
+- ✅ 订阅创建时初始化配额重置时间
+
+**用户体验**:
+- ✅ 订阅成功 Discord 通知（欢迎消息 + 功能介绍 + 快速开始）
+- ✅ 订阅到期提醒（提前 3 天，每日 9:00 AM）
+- ✅ 支付失败通知（故障排除步骤 + 支持资源）
+- ✅ 支付恢复通知（确认消息）
+- ✅ 管理员命令（`/admin set-tier/set-quota/reset-quota/info`）
+
+**安全与审计**:
+- ✅ Webhook 签名验证（crypto.timingSafeEqual）
+- ✅ BillingEvent 审计日志（所有事件存储）
+- ✅ 权限控制（管理员命令需 Administrator 权限）
+
+### 技术债务与后续工作
+
+**待完成**:
+1. **P0 #8**: 端到端测试（需要实际 LemonSqueezy 账号和配置）
+   - 创建测试商店和产品
+   - 配置 webhook URL (需 ngrok 或公网域名)
+   - 测试完整流程：注册 → 订阅 → 续费 → 取消
+
+2. **迁移现有 LLM 调用**:
+   - Digest skill
+   - Editorial skill
+   - Readings skill
+   - Diary skill
+   - 迁移到 `llm.service.ts` 的 `callLlmWithQuota()`
+
+3. **生产部署配置**:
+   - 设置环境变量（LEMONSQUEEZY_API_KEY, STORE_ID, VARIANT_ID, WEBHOOK_SECRET）
+   - 配置 webhook URL（需 HTTPS）
+   - 设置 HTTP_PORT（默认 3000）
+   - 配置防火墙规则（开放 HTTP_PORT）
+
+### 架构亮点
+
+1. **工厂模式**: Webhook handler 接受 Discord client，避免全局依赖
+2. **类型安全**: 自定义错误类型 + TypeScript 严格模式
+3. **关注点分离**: Service 层（lemonsqueezy, llm, quota-reset, subscription-reminder）独立
+4. **优雅降级**: Free tier 自动跳过 LLM 功能，避免崩溃
+5. **定时任务**: Cron jobs 统一管理（配额重置、到期提醒）
+6. **审计日志**: 所有 billing 事件持久化，可追溯
+
+### 成本估算
+
+**LemonSqueezy 费用**: 5% + $0.50/transaction  
+**月度订阅**: $9/month  
+→ LemonSqueezy 收取: $0.95/month  
+→ Haven 收入: $8.05/month
+
+**LLM 成本** (Claude 3.5 Sonnet):
+- 100 calls/day × 30 天 = 3000 calls/month
+- 假设平均每次 5K input + 1K output tokens
+- Input: 3000 × 5K × $0.003/1K = $45/month
+- Output: 3000 × 1K × $0.015/1K = $45/month
+- **总 LLM 成本**: ~$90/month
+
+**盈亏平衡**: 需约 12 个 Premium 用户（$8.05 × 12 = $96.60）
+
+---
+
+_创建于 2026-01-30_  
+_完成于 2026-01-30_  
+_预估工时：27h | 实际工时：~6h (heartbeat 自动执行)_
