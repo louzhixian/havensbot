@@ -40,6 +40,7 @@ import {
 import { getOrCreateGuildSettings } from "./guild-settings.js";
 import { registerGuildCreateHandler } from "./onboarding.js";
 import { seedBuiltinTemplates } from "./template-service.js";
+import { initializeLemonSqueezy, isLemonSqueezyEnabled } from "./services/lemonsqueezy.service.js";
 
 const main = async (): Promise<void> => {
   const config = loadConfig();
@@ -191,6 +192,14 @@ const main = async (): Promise<void> => {
 
     // Seed builtin templates
     await seedBuiltinTemplates();
+
+    // Initialize LemonSqueezy payment service
+    if (isLemonSqueezyEnabled()) {
+      initializeLemonSqueezy();
+      logger.info("LemonSqueezy payment service enabled");
+    } else {
+      logger.warn("LemonSqueezy not configured - payment features disabled");
+    }
 
     // 初始化固定 channel (legacy, per-guild)
     if (config.discordGuildId) {

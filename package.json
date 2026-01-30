@@ -12,6 +12,7 @@
     "verify": "bash scripts/verify.sh"
   },
   "dependencies": {
+    "@lemonsqueezy/lemonsqueezy.js": "^4.0.0",
     "@mozilla/readability": "^0.6.0",
     "@prisma/client": "^5.22.0",
     "discord.js": "^14.16.3",
