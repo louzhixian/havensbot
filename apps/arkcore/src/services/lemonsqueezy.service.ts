@@ -15,8 +15,8 @@ import {
   type Checkout,
   type Subscription,
 } from '@lemonsqueezy/lemonsqueezy.js';
-import { db } from '../db.js';
-import { logger } from '../utils/logger.js';
+import { prisma as db } from '../db.js';
+import { logger } from '../observability/logger.js';
 
 /**
  * Initialize LemonSqueezy SDK
@@ -25,12 +25,12 @@ export function initializeLemonSqueezy() {
   const apiKey = process.env.LEMONSQUEEZY_API_KEY;
   
   if (!apiKey) {
-    logger.warn('LEMONSQUEEZY_API_KEY not set - payment features disabled');
+    logger.warn({}, 'LEMONSQUEEZY_API_KEY not set - payment features disabled');
     return false;
   }
 
   lemonSqueezySetup({ apiKey });
-  logger.info('LemonSqueezy SDK initialized');
+  logger.info({}, 'LemonSqueezy SDK initialized');
   return true;
 }
 
@@ -59,14 +59,15 @@ export async function createPremiumCheckout(guildId: string, userId: string): Pr
       throw new Error('Failed to create checkout URL');
     }
 
-    logger.info(`Created checkout for guild ${guildId}`, {
+    logger.info({
+      guildId,
       checkoutId: checkout.data.data.id,
       url: checkout.data.data.attributes.url,
-    });
+    }, `Created checkout for guild ${guildId}`);
 
     return checkout.data.data.attributes.url;
   } catch (error) {
-    logger.error('Failed to create checkout', { error, guildId, userId });
+    logger.error({ error, guildId, userId }, 'Failed to create checkout');
     throw error;
   }
 }
@@ -80,7 +81,7 @@ export async function handleSubscriptionCreated(payload: any): Promise<void> {
   const customData = attributes.first_subscription_item?.subscription_item_data?.custom_data;
 
   if (!customData?.guildId) {
-    logger.error('Missing guildId in subscription custom data', { payload });
+    logger.error({ payload }, 'Missing guildId in subscription custom data');
     return;
   }
 
@@ -93,7 +94,7 @@ export async function handleSubscriptionCreated(payload: any): Promise<void> {
     });
 
     if (!guild) {
-      logger.error(`Guild not found: ${guildId}`);
+      logger.error({ guildId }, `Guild not found: ${guildId}`);
       return;
     }
 
@@ -122,12 +123,13 @@ export async function handleSubscriptionCreated(payload: any): Promise<void> {
       },
     });
 
-    logger.info(`Subscription activated for guild ${guildId}`, {
+    logger.info({
+      guildId,
       subscriptionId: id,
       expiresAt: attributes.renews_at,
-    });
+    }, `Subscription activated for guild ${guildId}`);
   } catch (error) {
-    logger.error('Failed to handle subscription_created', { error, payload });
+    logger.error({ error, payload }, 'Failed to handle subscription_created');
     throw error;
   }
 }
@@ -147,7 +149,7 @@ export async function handleSubscriptionUpdated(payload: any): Promise<void> {
     });
 
     if (!subscription) {
-      logger.warn(`Subscription not found: ${id}`);
+      logger.warn({ id }, `Subscription not found: ${id}`);
       return;
     }
 
@@ -172,12 +174,13 @@ export async function handleSubscriptionUpdated(payload: any): Promise<void> {
       },
     });
 
-    logger.info(`Subscription updated for guild ${subscription.guildId}`, {
+    logger.info({
+      guildId: subscription.guildId,
       subscriptionId: id,
       status: attributes.status,
-    });
+    }, `Subscription updated for guild ${subscription.guildId}`);
   } catch (error) {
-    logger.error('Failed to handle subscription_updated', { error, payload });
+    logger.error({ error, payload }, 'Failed to handle subscription_updated');
     throw error;
   }
 }
@@ -197,7 +200,7 @@ export async function handleSubscriptionCancelled(payload: any): Promise<void> {
     });
 
     if (!subscription) {
-      logger.warn(`Subscription not found: ${id}`);
+      logger.warn({ id }, `Subscription not found: ${id}`);
       return;
     }
 
@@ -224,13 +227,14 @@ export async function handleSubscriptionCancelled(payload: any): Promise<void> {
       });
     }
 
-    logger.info(`Subscription cancelled for guild ${subscription.guildId}`, {
+    logger.info({
+      guildId: subscription.guildId,
       subscriptionId: id,
       expiresAt: attributes.ends_at,
       immediateDowngrade: isExpired,
-    });
+    }, `Subscription cancelled for guild ${subscription.guildId}`);
   } catch (error) {
-    logger.error('Failed to handle subscription_cancelled', { error, payload });
+    logger.error({ error, payload }, 'Failed to handle subscription_cancelled');
     throw error;
   }
 }
@@ -256,7 +260,7 @@ export async function storeBillingEvent(
   } catch (error) {
     // Ignore duplicate events
     if ((error as any).code === 'P2002') {
-      logger.debug(`Duplicate billing event ignored: ${lemonSqueezyId}`);
+      logger.debug({ lemonSqueezyId }, `Duplicate billing event ignored: ${lemonSqueezyId}`);
       return;
     }
     throw error;

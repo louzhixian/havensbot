@@ -43,6 +43,11 @@ import {
 } from "./source-handlers.js";
 import { truncate } from "./utils.js";
 import {
+  createPremiumCheckout,
+  getGuildSubscription,
+  isLemonSqueezyEnabled,
+} from "./services/lemonsqueezy.service.js";
+import {
   getStatsOverview,
   getLlmDetailedStats,
   getRecentErrors,
@@ -479,7 +484,139 @@ export const commandData = [
   new SlashCommandBuilder()
     .setName("help")
     .setDescription("显示帮助信息和常用命令"),
+  new SlashCommandBuilder()
+    .setName("subscribe")
+    .setDescription("Upgrade to Haven Premium"),
+  new SlashCommandBuilder()
+    .setName("billing")
+    .setDescription("View subscription status and usage"),
 ].map((command) => command.toJSON());
+
+/**
+ * Handle /subscribe command
+ */
+async function handleSubscribeCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!interaction.guildId) {
+    await interaction.reply({
+      content: "This command can only be used in a server.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  // Check if LemonSqueezy is enabled
+  if (!isLemonSqueezyEnabled()) {
+    await interaction.reply({
+      content: "❌ Payment system is not configured. Please contact the administrator.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    // Get guild settings
+    const guild = await getGuildSettings(interaction.guildId);
+
+    if (!guild) {
+      await interaction.editReply({
+        content: "❌ Guild settings not found. Please contact support.",
+      });
+      return;
+    }
+
+    // Check if already premium
+    if (guild.tier === "premium") {
+      const subscription = await getGuildSubscription(interaction.guildId);
+      const expiresAt = subscription?.currentPeriodEnd
+        ? new Date(subscription.currentPeriodEnd).toLocaleDateString()
+        : "N/A";
+
+      await interaction.editReply({
+        content: `✅ You already have Haven Premium!\n\n📅 Renews: ${expiresAt}\n\nUse \`/billing\` to manage your subscription.`,
+      });
+      return;
+    }
+
+    // Create checkout session
+    const checkoutUrl = await createPremiumCheckout(interaction.guildId, interaction.user.id);
+
+    await interaction.editReply({
+      content: `🚀 **Upgrade to Haven Premium**\n\n✨ Get access to:\n• All Premium Skills (DeepDive, Readings, Editorial, Diary, Voice)\n• LLM-powered summaries (100 calls/day)\n• Up to 100 RSS sources\n\n💳 **Price:** $9/month\n\n👉 [Click here to subscribe](${checkoutUrl})\n\n_After payment, your server will be automatically upgraded._`,
+    });
+  } catch (error) {
+    await interaction.editReply({
+      content: `❌ Failed to create checkout session: ${(error as Error).message}`,
+    });
+  }
+}
+
+/**
+ * Handle /billing command
+ */
+async function handleBillingCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!interaction.guildId) {
+    await interaction.reply({
+      content: "This command can only be used in a server.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    // Get guild settings
+    const guild = await getGuildSettings(interaction.guildId);
+
+    if (!guild) {
+      await interaction.editReply({
+        content: "❌ Guild settings not found. Please contact support.",
+      });
+      return;
+    }
+
+    // Get subscription
+    const subscription = await getGuildSubscription(interaction.guildId);
+
+    // Build status message
+    let message = `📊 **Haven Billing Status**\n\n`;
+    message += `**Plan:** ${guild.tier === "premium" ? "✨ Premium" : "🆓 Free"}\n`;
+
+    if (guild.tier === "premium" && subscription) {
+      const expiresAt = new Date(subscription.currentPeriodEnd).toLocaleDateString();
+      const daysLeft = Math.ceil(
+        (new Date(subscription.currentPeriodEnd).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+      );
+
+      message += `**Status:** ${subscription.cancelAtPeriodEnd ? "⚠️ Cancels" : "✅ Active"}\n`;
+      message += `**Renews:** ${expiresAt} (${daysLeft} days)\n\n`;
+
+      message += `**Usage (Today):**\n`;
+      message += `• LLM Calls: ${guild.llmUsedToday} / ${guild.llmDailyQuota}\n`;
+      message += `• RSS Sources: Check with \`/source list\`\n\n`;
+
+      if (subscription.cancelAtPeriodEnd) {
+        message += `⚠️ Your subscription will end on ${expiresAt}. You can resubscribe anytime with \`/subscribe\`.`;
+      } else {
+        message += `ℹ️ To cancel your subscription, use \`/cancel\` (coming soon).`;
+      }
+    } else if (guild.tier === "free") {
+      message += `\n💡 **Want more?** Upgrade to Premium:\n`;
+      message += `• All Premium Skills unlocked\n`;
+      message += `• 100 LLM calls/day\n`;
+      message += `• Up to 100 RSS sources\n\n`;
+      message += `Use \`/subscribe\` to upgrade!`;
+    }
+
+    await interaction.editReply({ content: message });
+  } catch (error) {
+    await interaction.editReply({
+      content: `❌ Failed to fetch billing info: ${(error as Error).message}`,
+    });
+  }
+}
 
 export const handleInteraction = async (
   interaction: ChatInputCommandInteraction,
@@ -1498,6 +1635,16 @@ export const handleInteraction = async (
       content: helpMessage,
       ephemeral: true,
     });
+    return;
+  }
+
+  if (interaction.commandName === "subscribe") {
+    await handleSubscribeCommand(interaction);
+    return;
+  }
+
+  if (interaction.commandName === "billing") {
+    await handleBillingCommand(interaction);
     return;
   }
 
