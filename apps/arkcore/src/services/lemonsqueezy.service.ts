@@ -280,6 +280,44 @@ export async function getGuildSubscription(guildId: string) {
 }
 
 /**
+ * Cancel a guild's subscription (access continues until period end)
+ */
+export async function cancelGuildSubscription(guildId: string): Promise<void> {
+  const subscription = await db.subscription.findUnique({
+    where: { guildId },
+  });
+
+  if (!subscription) {
+    throw new Error('No active subscription found');
+  }
+
+  if (subscription.cancelAtPeriodEnd) {
+    throw new Error('Subscription is already set to cancel');
+  }
+
+  try {
+    // Cancel subscription in LemonSqueezy (at period end)
+    await cancelSubscription(subscription.lemonSqueezyId);
+
+    // Update local record
+    await db.subscription.update({
+      where: { guildId },
+      data: {
+        cancelAtPeriodEnd: true,
+      },
+    });
+
+    logger.info(
+      { guildId, subscriptionId: subscription.lemonSqueezyId },
+      `Subscription canceled for guild ${guildId} (access continues until ${subscription.currentPeriodEnd})`
+    );
+  } catch (error) {
+    logger.error({ error, guildId }, 'Failed to cancel subscription');
+    throw error;
+  }
+}
+
+/**
  * Check if LemonSqueezy is configured
  */
 export function isLemonSqueezyEnabled(): boolean {

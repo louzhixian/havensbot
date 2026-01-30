@@ -47,6 +47,7 @@ import {
   createPremiumCheckout,
   getGuildSubscription,
   isLemonSqueezyEnabled,
+  cancelGuildSubscription,
 } from "./services/lemonsqueezy.service.js";
 import {
   getStatsOverview,
@@ -492,6 +493,9 @@ export const commandData = [
     .setName("billing")
     .setDescription("View subscription status and usage"),
   new SlashCommandBuilder()
+    .setName("cancel")
+    .setDescription("Cancel your Premium subscription (access continues until period end)"),
+  new SlashCommandBuilder()
     .setName("admin")
     .setDescription("Admin commands for managing subscriptions and quotas")
     .addSubcommand((sub) =>
@@ -769,7 +773,7 @@ async function handleBillingCommand(interaction: ChatInputCommandInteraction): P
       if (subscription.cancelAtPeriodEnd) {
         message += `⚠️ Your subscription will end on ${expiresAt}. You can resubscribe anytime with \`/subscribe\`.`;
       } else {
-        message += `ℹ️ To cancel your subscription, use \`/cancel\` (coming soon).`;
+        message += `ℹ️ To cancel your subscription, use \`/cancel\`.`;
       }
     } else if (guild.tier === "free") {
       message += `\n💡 **Want more?** Upgrade to Premium:\n`;
@@ -783,6 +787,73 @@ async function handleBillingCommand(interaction: ChatInputCommandInteraction): P
   } catch (error) {
     await interaction.editReply({
       content: `❌ Failed to fetch billing info: ${(error as Error).message}`,
+    });
+  }
+}
+
+/**
+ * Handle /cancel command
+ */
+async function handleCancelCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!interaction.guildId) {
+    await interaction.reply({
+      content: "This command can only be used in a server.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    // Get guild settings
+    const guild = await getGuildSettings(interaction.guildId);
+
+    if (!guild) {
+      await interaction.editReply({
+        content: "❌ Guild settings not found. Please contact support.",
+      });
+      return;
+    }
+
+    // Check if user has Premium
+    if (guild.tier !== "premium") {
+      await interaction.editReply({
+        content: "❌ You don't have an active Premium subscription to cancel.",
+      });
+      return;
+    }
+
+    // Get subscription
+    const subscription = await getGuildSubscription(interaction.guildId);
+
+    if (!subscription) {
+      await interaction.editReply({
+        content: "❌ No subscription found. Please contact support.",
+      });
+      return;
+    }
+
+    // Check if already set to cancel
+    if (subscription.cancelAtPeriodEnd) {
+      const expiresAt = new Date(subscription.currentPeriodEnd).toLocaleDateString();
+      await interaction.editReply({
+        content: `ℹ️ Your subscription is already set to cancel on ${expiresAt}.\n\nIf you'd like to continue with Premium, please contact support or resubscribe after cancellation.`,
+      });
+      return;
+    }
+
+    // Cancel subscription
+    await cancelGuildSubscription(interaction.guildId);
+
+    const expiresAt = new Date(subscription.currentPeriodEnd).toLocaleDateString();
+
+    await interaction.editReply({
+      content: `✅ **Subscription Canceled**\n\nYour Premium subscription has been canceled. You'll continue to have access to all Premium features until **${expiresAt}**.\n\n**What happens next:**\n• Premium access continues until ${expiresAt}\n• No further charges will be made\n• After ${expiresAt}, your server will be downgraded to Free tier\n\n**Changed your mind?**\nYou can resubscribe anytime with \`/subscribe\`.\n\nThank you for using Haven! 🦉`,
+    });
+  } catch (error) {
+    await interaction.editReply({
+      content: `❌ Failed to cancel subscription: ${(error as Error).message}`,
     });
   }
 }
@@ -1814,6 +1885,11 @@ export const handleInteraction = async (
 
   if (interaction.commandName === "billing") {
     await handleBillingCommand(interaction);
+    return;
+  }
+
+  if (interaction.commandName === "cancel") {
+    await handleCancelCommand(interaction);
     return;
   }
 
