@@ -47,10 +47,6 @@ const main = async (): Promise<void> => {
   const config = loadConfig();
   const client = createClient();
 
-  // Start HTTP server for webhooks
-  const httpServer = createHttpServer();
-  startHttpServer(httpServer);
-
   // Initialize skill context and registry
   const skillCtx: SkillContext = {
     client,
@@ -201,10 +197,14 @@ const main = async (): Promise<void> => {
     // Initialize LemonSqueezy payment service
     if (isLemonSqueezyEnabled()) {
       initializeLemonSqueezy();
-      logger.info("LemonSqueezy payment service enabled");
+      logger.info({}, "LemonSqueezy payment service enabled");
     } else {
-      logger.warn("LemonSqueezy not configured - payment features disabled");
+      logger.warn({}, "LemonSqueezy not configured - payment features disabled");
     }
+
+    // Start HTTP server for webhooks (after client is ready)
+    const httpServer = createHttpServer(client);
+    startHttpServer(httpServer);
 
     // 初始化固定 channel (legacy, per-guild)
     if (config.discordGuildId) {

@@ -5,13 +5,14 @@
  */
 
 import express, { Express } from 'express';
-import { handleLemonSqueezyWebhook } from './webhooks/lemonsqueezy.js';
+import { Client } from 'discord.js';
+import { createLemonSqueezyWebhookHandler } from './webhooks/lemonsqueezy.js';
 import { logger } from './observability/logger.js';
 
 /**
  * Create and configure Express server
  */
-export function createHttpServer(): Express {
+export function createHttpServer(discordClient: Client): Express {
   const app = express();
 
   // Health check endpoint
@@ -21,7 +22,8 @@ export function createHttpServer(): Express {
 
   // LemonSqueezy webhook endpoint
   // Important: Use express.json() middleware to parse JSON body
-  app.post('/api/webhooks/lemonsqueezy', express.json(), handleLemonSqueezyWebhook);
+  const webhookHandler = createLemonSqueezyWebhookHandler(discordClient);
+  app.post('/api/webhooks/lemonsqueezy', express.json(), webhookHandler);
 
   return app;
 }

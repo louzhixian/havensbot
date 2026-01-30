@@ -6,6 +6,7 @@
  */
 
 import { Request, Response } from 'express';
+import { Client, ChannelType, TextChannel } from 'discord.js';
 import crypto from 'crypto';
 import {
   handleSubscriptionCreated,
@@ -27,9 +28,73 @@ function verifyWebhookSignature(rawBody: string, signature: string, secret: stri
 }
 
 /**
- * Handle LemonSqueezy webhook
+ * Send subscription success notification to Discord
  */
-export async function handleLemonSqueezyWebhook(req: Request, res: Response): Promise<void> {
+async function sendSubscriptionSuccessNotification(
+  client: Client,
+  guildId: string
+): Promise<void> {
+  try {
+    const guild = await client.guilds.fetch(guildId);
+    
+    // Find a suitable channel to send the notification
+    // Priority: system channel > first text channel
+    let targetChannel: TextChannel | null = null;
+    
+    if (guild.systemChannel) {
+      targetChannel = guild.systemChannel as TextChannel;
+    } else {
+      // Find first text channel
+      const textChannels = guild.channels.cache.filter(
+        (ch) => ch.type === ChannelType.GuildText
+      );
+      targetChannel = textChannels.first() as TextChannel | undefined || null;
+    }
+    
+    if (!targetChannel) {
+      logger.warn({ guildId }, 'No suitable channel found for subscription notification');
+      return;
+    }
+    
+    const message = `🎉 **Welcome to Haven Premium!**
+
+Your server has been upgraded to Premium. Here's what you can do now:
+
+✨ **Premium Skills Unlocked:**
+• **DeepDive** - AI-powered article analysis with discussion threads
+• **Readings** - Bookmark and Q&A system for articles
+• **Editorial** - Translation and writing assistance
+• **Diary** - AI-powered daily journaling
+• **Voice** - Voice message transcription
+
+📊 **LLM Features:**
+• 100 LLM calls per day
+• Smart digest summaries
+• Up to 100 RSS sources
+
+🚀 **Getting Started:**
+1. Use \`/skills list\` to see all available skills
+2. Use \`/skills enable <skill>\` to activate Premium features
+3. Use \`/billing\` to check your usage anytime
+
+💡 **Need Help?**
+• \`/help\` - Command reference
+• \`/init\` - Quick server setup
+
+Thank you for supporting Haven! 🦉`;
+    
+    await targetChannel.send(message);
+    logger.info({ guildId, channelId: targetChannel.id }, 'Subscription success notification sent');
+  } catch (error) {
+    logger.error({ error, guildId }, 'Failed to send subscription notification');
+  }
+}
+
+/**
+ * Create LemonSqueezy webhook handler with Discord client
+ */
+export function createLemonSqueezyWebhookHandler(client: Client) {
+  return async function handleLemonSqueezyWebhook(req: Request, res: Response): Promise<void> {
   const signature = req.headers['x-signature'] as string;
   const webhookSecret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET;
 
@@ -70,6 +135,10 @@ export async function handleLemonSqueezyWebhook(req: Request, res: Response): Pr
     switch (eventName) {
       case 'subscription_created':
         await handleSubscriptionCreated(payload);
+        // Send success notification to Discord
+        if (guildId) {
+          await sendSubscriptionSuccessNotification(client, guildId);
+        }
         break;
 
       case 'subscription_updated':
@@ -101,4 +170,5 @@ export async function handleLemonSqueezyWebhook(req: Request, res: Response): Pr
     logger.error({ error, eventName, eventId }, 'Failed to process webhook');
     res.status(500).json({ error: 'Failed to process webhook' });
   }
+  };
 }
