@@ -21,6 +21,7 @@ import { createLlmClient } from "./llm/client.js";
 import { getAllGuildSettings, getSkillConfig } from "./guild-settings.js";
 import type { SkillRegistry, SkillContext } from "./skills/index.js";
 import { resetExpiredQuotas } from "./services/quota-reset.service.js";
+import { checkExpiringSubscriptions } from "./services/subscription-reminder.service.js";
 
 /**
  * Process digest for a single channel (non-forum mode)
@@ -453,4 +454,18 @@ export const startSchedulers = (
     { timezone: config.tz, recoverMissedExecutions: true }
   );
   logger.info({}, "LLM quota reset scheduled (hourly)");
+
+  // Subscription expiration reminder (daily at 9:00 AM)
+  cron.schedule(
+    "0 9 * * *", // Daily at 9:00 AM
+    async () => {
+      try {
+        await checkExpiringSubscriptions(client);
+      } catch (error) {
+        logger.error({ error }, "Subscription reminder job failed");
+      }
+    },
+    { timezone: config.tz, recoverMissedExecutions: true }
+  );
+  logger.info({}, "Subscription expiration reminder scheduled (daily at 9:00 AM)");
 };
