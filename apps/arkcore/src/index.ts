@@ -41,10 +41,15 @@ import { getOrCreateGuildSettings } from "./guild-settings.js";
 import { registerGuildCreateHandler } from "./onboarding.js";
 import { seedBuiltinTemplates } from "./template-service.js";
 import { initializeLemonSqueezy, isLemonSqueezyEnabled } from "./services/lemonsqueezy.service.js";
+import { createHttpServer, startHttpServer } from "./http-server.js";
 
 const main = async (): Promise<void> => {
   const config = loadConfig();
   const client = createClient();
+
+  // Start HTTP server for webhooks
+  const httpServer = createHttpServer();
+  startHttpServer(httpServer);
 
   // Initialize skill context and registry
   const skillCtx: SkillContext = {

@@ -20,6 +20,8 @@ services:
   app:
     build: .
     restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-3000}:${HTTP_PORT:-3000}"
     env_file:
       - .env
     environment:
