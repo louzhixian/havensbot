@@ -203,7 +203,7 @@ model GuildSettings {
   locale          String    @default("en")
 
   // Subscription
-  tier            String    @default("free")  // free | premium
+  tier            String    @default("free")  // free | premium | suspended
   tierExpiresAt   DateTime?
 
   // Skills
@@ -213,6 +213,7 @@ model GuildSettings {
   rssSourceLimit  Int       @default(10)
   llmDailyQuota   Int       @default(0)
   llmUsedToday    Int       @default(0)
+  llmQuotaResetAt DateTime?
 
   // Skill-specific configs (JSON)
   skillConfigs    Json      @default("{}")
@@ -220,7 +221,45 @@ model GuildSettings {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  subscription    Subscription?
+
   @@index([tier])
+}
+
+model Subscription {
+  id                String        @id @default(cuid())
+  guildId           String        @unique
+
+  // LemonSqueezy
+  lemonSqueezyId    String        @unique  // subscription_id
+  customerId        String                 // customer_id
+  variantId         String                 // price/plan ID
+
+  status            String                 // active | past_due | canceled | expired
+  currentPeriodEnd  DateTime               // Current billing period end
+  cancelAtPeriodEnd Boolean       @default(false)
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  guild             GuildSettings @relation(fields: [guildId], references: [guildId], onDelete: Cascade)
+
+  @@index([status])
+  @@index([currentPeriodEnd])
+}
+
+model BillingEvent {
+  id              String   @id @default(cuid())
+  guildId         String?           // Nullable for events without guild context
+
+  type            String            // subscription_created | payment_success | subscription_canceled | ...
+  lemonSqueezyId  String   @unique  // event_id (prevent duplicate processing)
+  payload         Json              // Full webhook payload
+
+  createdAt       DateTime @default(now())
+
+  @@index([guildId])
+  @@index([type, createdAt])
 }
 
 model GuildTemplate {
