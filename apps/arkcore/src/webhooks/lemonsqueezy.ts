@@ -28,6 +28,101 @@ function verifyWebhookSignature(rawBody: string, signature: string, secret: stri
 }
 
 /**
+ * Send payment failed notification to Discord
+ */
+async function sendPaymentFailedNotification(
+  client: Client,
+  guildId: string
+): Promise<void> {
+  try {
+    const guild = await client.guilds.fetch(guildId);
+    
+    // Find a suitable channel to send the notification
+    let targetChannel: TextChannel | null = null;
+    
+    if (guild.systemChannel) {
+      targetChannel = guild.systemChannel as TextChannel;
+    } else {
+      const textChannels = guild.channels.cache.filter(
+        (ch) => ch.type === ChannelType.GuildText
+      );
+      targetChannel = textChannels.first() as TextChannel | undefined || null;
+    }
+    
+    if (!targetChannel) {
+      logger.warn({ guildId }, 'No suitable channel found for payment failed notification');
+      return;
+    }
+    
+    const message = `⚠️ **Haven Premium Payment Failed**
+
+Your recent Premium subscription payment could not be processed.
+
+**What This Means:**
+• Your Premium access will remain active until the current billing period ends
+• We'll automatically retry the payment in a few days
+• If payment continues to fail, your subscription may be canceled
+
+**How to Fix:**
+1. Check that your payment method is valid and has sufficient funds
+2. Update your payment information in your LemonSqueezy account
+3. Contact your bank if the issue persists
+
+**Need Help?**
+• Use \`/billing\` to check your subscription status
+• Visit your LemonSqueezy customer portal to update payment details
+• Contact support if you need assistance
+
+We'll notify you once the payment is successfully processed. Thank you for your patience! 🦉`;
+    
+    await targetChannel.send(message);
+    logger.info({ guildId, channelId: targetChannel.id }, 'Payment failed notification sent');
+  } catch (error) {
+    logger.error({ error, guildId }, 'Failed to send payment failed notification');
+  }
+}
+
+/**
+ * Send payment recovered notification to Discord
+ */
+async function sendPaymentRecoveredNotification(
+  client: Client,
+  guildId: string
+): Promise<void> {
+  try {
+    const guild = await client.guilds.fetch(guildId);
+    
+    // Find a suitable channel to send the notification
+    let targetChannel: TextChannel | null = null;
+    
+    if (guild.systemChannel) {
+      targetChannel = guild.systemChannel as TextChannel;
+    } else {
+      const textChannels = guild.channels.cache.filter(
+        (ch) => ch.type === ChannelType.GuildText
+      );
+      targetChannel = textChannels.first() as TextChannel | undefined || null;
+    }
+    
+    if (!targetChannel) {
+      logger.warn({ guildId }, 'No suitable channel found for payment recovered notification');
+      return;
+    }
+    
+    const message = `✅ **Haven Premium Payment Recovered**
+
+Great news! Your subscription payment has been successfully processed.
+
+Your Premium access will continue uninterrupted. Thank you for resolving the payment issue! 🦉`;
+    
+    await targetChannel.send(message);
+    logger.info({ guildId, channelId: targetChannel.id }, 'Payment recovered notification sent');
+  } catch (error) {
+    logger.error({ error, guildId }, 'Failed to send payment recovered notification');
+  }
+}
+
+/**
  * Send subscription success notification to Discord
  */
 async function sendSubscriptionSuccessNotification(
@@ -157,8 +252,19 @@ export function createLemonSqueezyWebhookHandler(client: Client) {
         break;
 
       case 'subscription_payment_failed':
-        // TODO: Send alert to guild owner
         logger.warn({ eventId, guildId }, 'Subscription payment failed');
+        // Send payment failed notification to Discord
+        if (guildId) {
+          await sendPaymentFailedNotification(client, guildId);
+        }
+        break;
+
+      case 'subscription_payment_recovered':
+        logger.info({ eventId, guildId }, 'Subscription payment recovered');
+        // Send payment recovered notification to Discord
+        if (guildId) {
+          await sendPaymentRecoveredNotification(client, guildId);
+        }
         break;
 
       default:
