@@ -17,6 +17,7 @@ import {
 } from '@lemonsqueezy/lemonsqueezy.js';
 import { prisma as db } from '../db.js';
 import { logger } from '../observability/logger.js';
+import { initializeQuotaResetTime } from './quota-reset.service.js';
 
 /**
  * Initialize LemonSqueezy SDK
@@ -118,10 +119,11 @@ export async function handleSubscriptionCreated(payload: any): Promise<void> {
         tier: 'premium',
         tierExpiresAt: new Date(attributes.renews_at),
         llmDailyQuota: 100,
-        llmUsedToday: 0,
-        llmQuotaResetAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
       },
     });
+
+    // Initialize quota reset time
+    await initializeQuotaResetTime(guildId);
 
     logger.info({
       guildId,

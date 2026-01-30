@@ -12,6 +12,7 @@
     "verify": "bash scripts/verify.sh"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.72.1",
     "@lemonsqueezy/lemonsqueezy.js": "^4.0.0",
     "@mozilla/readability": "^0.6.0",
     "@prisma/client": "^5.22.0",

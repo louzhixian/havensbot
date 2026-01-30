@@ -20,6 +20,7 @@ import { checkTimeoutSessions, createDailyDiaryPost } from "./diary/session.js";
 import { createLlmClient } from "./llm/client.js";
 import { getAllGuildSettings, getSkillConfig } from "./guild-settings.js";
 import type { SkillRegistry, SkillContext } from "./skills/index.js";
+import { resetExpiredQuotas } from "./services/quota-reset.service.js";
 
 /**
  * Process digest for a single channel (non-forum mode)
@@ -438,4 +439,18 @@ export const startSchedulers = (
     );
     logger.info("Skill cron polling scheduled (every minute)");
   }
+
+  // LLM quota reset (every hour)
+  cron.schedule(
+    "0 * * * *", // Every hour at :00
+    async () => {
+      try {
+        await resetExpiredQuotas();
+      } catch (error) {
+        logger.error({ error }, "Quota reset job failed");
+      }
+    },
+    { timezone: config.tz, recoverMissedExecutions: true }
+  );
+  logger.info({}, "LLM quota reset scheduled (hourly)");
 };
