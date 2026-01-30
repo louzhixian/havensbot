@@ -12,6 +12,7 @@ import {
   enableSkill,
   disableSkill,
 } from "./guild-settings.js";
+import { prisma } from "./db.js";
 import type { SkillRegistry } from "./skills/index.js";
 import { listTemplates, applyTemplate, resetGuild } from "./template-service.js";
 import { AppConfig } from "./config.js";
@@ -490,7 +491,175 @@ export const commandData = [
   new SlashCommandBuilder()
     .setName("billing")
     .setDescription("View subscription status and usage"),
+  new SlashCommandBuilder()
+    .setName("admin")
+    .setDescription("Admin commands for managing subscriptions and quotas")
+    .addSubcommand((sub) =>
+      sub
+        .setName("set-tier")
+        .setDescription("Set guild tier (admin only)")
+        .addStringOption((option) =>
+          option
+            .setName("tier")
+            .setDescription("Tier to set")
+            .setRequired(true)
+            .addChoices(
+              { name: "Free", value: "free" },
+              { name: "Premium", value: "premium" },
+              { name: "Suspended", value: "suspended" }
+            )
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("set-quota")
+        .setDescription("Set LLM daily quota (admin only)")
+        .addIntegerOption((option) =>
+          option
+            .setName("quota")
+            .setDescription("Daily LLM quota (0-1000)")
+            .setRequired(true)
+            .setMinValue(0)
+            .setMaxValue(1000)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("reset-quota")
+        .setDescription("Reset today's LLM usage to 0 (admin only)")
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("info")
+        .setDescription("View detailed guild settings (admin only)")
+    ),
 ].map((command) => command.toJSON());
+
+/**
+ * Check if user is a guild administrator
+ */
+function isGuildAdmin(interaction: ChatInputCommandInteraction): boolean {
+  if (!interaction.guild || !interaction.member) {
+    return false;
+  }
+  
+  const member = interaction.member;
+  
+  // Check if user has Administrator permission
+  if ('permissions' in member && member.permissions && typeof member.permissions !== 'string') {
+    return member.permissions.has('Administrator');
+  }
+  
+  return false;
+}
+
+/**
+ * Handle /admin command
+ */
+async function handleAdminCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!interaction.guildId) {
+    await interaction.reply({
+      content: "This command can only be used in a server.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  // Check admin permission
+  if (!isGuildAdmin(interaction)) {
+    await interaction.reply({
+      content: "❌ This command requires Administrator permission.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const subcommand = interaction.options.getSubcommand();
+  await interaction.deferReply({ ephemeral: true });
+
+  try {
+    if (subcommand === "set-tier") {
+      const tier = interaction.options.getString("tier", true) as "free" | "premium" | "suspended";
+      
+      await updateGuildSettings(interaction.guildId, { tier });
+      
+      await interaction.editReply({
+        content: `✅ Guild tier updated to **${tier}**.\n\n${
+          tier === "premium"
+            ? "⚠️ Note: This doesn't create a subscription. Use this for testing or manual grants only."
+            : ""
+        }`,
+      });
+    } else if (subcommand === "set-quota") {
+      const quota = interaction.options.getInteger("quota", true);
+      
+      await prisma.guildSettings.update({
+        where: { guildId: interaction.guildId },
+        data: { llmDailyQuota: quota },
+      });
+      
+      await interaction.editReply({
+        content: `✅ LLM daily quota updated to **${quota}** calls/day.`,
+      });
+    } else if (subcommand === "reset-quota") {
+      await prisma.guildSettings.update({
+        where: { guildId: interaction.guildId },
+        data: { llmUsedToday: 0 },
+      });
+      
+      await interaction.editReply({
+        content: `✅ Today's LLM usage reset to 0.`,
+      });
+    } else if (subcommand === "info") {
+      const guild = await getGuildSettings(interaction.guildId);
+      
+      if (!guild) {
+        await interaction.editReply({
+          content: "❌ Guild settings not found.",
+        });
+        return;
+      }
+      
+      const subscription = await getGuildSubscription(interaction.guildId);
+      
+      let info = `📊 **Guild Settings Info**\n\n`;
+      info += `**Guild ID:** ${guild.guildId}\n`;
+      info += `**Tier:** ${guild.tier}\n`;
+      info += `**Expires At:** ${guild.tierExpiresAt ? guild.tierExpiresAt.toLocaleString() : "N/A"}\n\n`;
+      
+      info += `**LLM Quota:**\n`;
+      info += `• Daily Quota: ${guild.llmDailyQuota}\n`;
+      info += `• Used Today: ${guild.llmUsedToday}\n`;
+      info += `• Remaining: ${guild.llmDailyQuota - guild.llmUsedToday}\n`;
+      info += `• Resets At: ${guild.llmQuotaResetAt ? guild.llmQuotaResetAt.toLocaleString() : "N/A"}\n\n`;
+      
+      info += `**Settings:**\n`;
+      info += `• Timezone: ${guild.timezone}\n`;
+      info += `• Locale: ${guild.locale}\n`;
+      info += `• RSS Source Limit: ${guild.rssSourceLimit}\n`;
+      info += `• Enabled Skills: ${guild.enabledSkills.join(", ")}\n\n`;
+      
+      if (subscription) {
+        info += `**Subscription:**\n`;
+        info += `• Status: ${subscription.status}\n`;
+        info += `• LemonSqueezy ID: ${subscription.lemonSqueezyId}\n`;
+        info += `• Customer ID: ${subscription.customerId}\n`;
+        info += `• Variant ID: ${subscription.variantId}\n`;
+        info += `• Current Period End: ${subscription.currentPeriodEnd.toLocaleString()}\n`;
+        info += `• Cancel At Period End: ${subscription.cancelAtPeriodEnd}\n`;
+        info += `• Created At: ${subscription.createdAt.toLocaleString()}\n`;
+      } else {
+        info += `**Subscription:** None\n`;
+      }
+      
+      await interaction.editReply({ content: info });
+    }
+  } catch (error) {
+    await interaction.editReply({
+      content: `❌ Admin command failed: ${(error as Error).message}`,
+    });
+  }
+}
 
 /**
  * Handle /subscribe command
@@ -1645,6 +1814,11 @@ export const handleInteraction = async (
 
   if (interaction.commandName === "billing") {
     await handleBillingCommand(interaction);
+    return;
+  }
+
+  if (interaction.commandName === "admin") {
+    await handleAdminCommand(interaction);
     return;
   }
 
