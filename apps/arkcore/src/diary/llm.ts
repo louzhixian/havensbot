@@ -1,5 +1,5 @@
 import type { AppConfig } from "../config.js";
-import { LlmClient, type LlmMessage } from "../llm/client.js";
+import { callLlmWithQuota, QuotaExceededError, TierRestrictedError } from "../services/llm.service.js";
 import { loadPromptSections, renderTemplate } from "../utils/prompt-utils.js";
 import { loadRecentDiaryContext, getDayContext } from "./context.js";
 import type { DiaryMessage } from "./types.js";
@@ -11,7 +11,7 @@ const PROMPT_FILE = "diary.companion.prompt.md";
  */
 export const generateDiaryResponse = async (
   config: AppConfig,
-  llmClient: LlmClient,
+  guildId: string,
   conversationHistory: DiaryMessage[]
 ): Promise<string> => {
   const { system, user: userTemplate } = await loadPromptSections(PROMPT_FILE);
@@ -27,8 +27,8 @@ export const generateDiaryResponse = async (
     date: date,
   });
 
-  // Build message history
-  const messages: LlmMessage[] = [{ role: "system", content: systemPrompt }];
+  // Build message history (Anthropic format: only user/assistant, system is separate)
+  const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
 
   // Add conversation history
   for (const msg of conversationHistory) {
@@ -49,18 +49,15 @@ export const generateDiaryResponse = async (
     });
   }
 
-  const response = await llmClient.call({
-    operation: "diary_conversation",
+  const response = await callLlmWithQuota({
+    guildId,
+    system: systemPrompt,
     messages,
     temperature: 0.7, // More creative for conversation
     maxTokens: 300, // Keep responses concise
   });
 
-  if (!response.success || !response.data) {
-    throw new Error(response.error || "Failed to generate diary response");
-  }
-
-  return response.data;
+  return response.content;
 };
 
 /**
@@ -68,9 +65,9 @@ export const generateDiaryResponse = async (
  */
 export const generateOpeningMessage = async (
   config: AppConfig,
-  llmClient: LlmClient
+  guildId: string
 ): Promise<string> => {
-  return generateDiaryResponse(config, llmClient, []);
+  return generateDiaryResponse(config, guildId, []);
 };
 
 /**
@@ -78,7 +75,7 @@ export const generateOpeningMessage = async (
  */
 export const generateFarewellMessage = async (
   config: AppConfig,
-  llmClient: LlmClient,
+  guildId: string,
   conversationHistory: DiaryMessage[]
 ): Promise<string> => {
   const { system } = await loadPromptSections(PROMPT_FILE);
@@ -91,7 +88,7 @@ export const generateFarewellMessage = async (
     date: date,
   });
 
-  const messages: LlmMessage[] = [{ role: "system", content: systemPrompt }];
+  const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
 
   // Add conversation history
   for (const msg of conversationHistory) {
@@ -108,16 +105,17 @@ export const generateFarewellMessage = async (
       "[The user is ending the diary session. Please give a warm, brief farewell that acknowledges what was discussed today. Keep it to 1-2 sentences.]",
   });
 
-  const response = await llmClient.call({
-    operation: "diary_farewell",
-    messages,
-    temperature: 0.7,
-    maxTokens: 150,
-  });
+  try {
+    const response = await callLlmWithQuota({
+      guildId,
+      system: systemPrompt,
+      messages,
+      temperature: 0.7,
+      maxTokens: 150,
+    });
 
-  if (!response.success || !response.data) {
+    return response.content;
+  } catch {
     return "Good night! Thanks for sharing your day with me.";
   }
-
-  return response.data;
 };

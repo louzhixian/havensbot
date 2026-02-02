@@ -77,7 +77,7 @@ export async function transcribe(
   const maxRetries = config.whisperMaxRetries;
   const timeoutMs = config.whisperTimeoutMs;
   const baseUrl = config.whisperApiUrl.replace(/\/$/, "");
-  const endpoint = `${baseUrl}/asr?encode=true&task=transcribe&language=zh&word_timestamps=false&output=json`;
+  const endpoint = `${baseUrl}/asr?encode=true&task=transcribe&language=zh&word_timestamps=false&output=json&refine=true`;
   const startTime = Date.now();
 
   let lastError: Error | undefined;

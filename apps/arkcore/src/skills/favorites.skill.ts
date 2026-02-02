@@ -157,7 +157,7 @@ const handleEyesReaction = async (
     }, 5000);
 
     try {
-      const result = await generateDeepDive(config, itemUrl);
+      const result = await generateDeepDive(config, itemUrl, guildId);
       const chunks = splitMessageContent(result.content, 1800);
       for (const chunk of chunks) {
         await forumResult.thread.send({ content: chunk });

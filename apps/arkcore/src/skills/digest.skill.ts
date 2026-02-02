@@ -39,13 +39,14 @@ const processChannelWithRetry = async (
   channelId: string,
   channelName: string,
   thread: { send: (options: { content: string }) => Promise<unknown> } | null,
-  forumMode: boolean
+  forumMode: boolean,
+  guildId?: string
 ): Promise<ProcessChannelResult> => {
   const { rangeStart, rangeEnd } = await resolveDigestRange(channelId);
 
   for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
     try {
-      const digest = await createDigest(config, channelId, rangeStart, rangeEnd);
+      const digest = await createDigest(config, channelId, rangeStart, rangeEnd, guildId);
 
       if (forumMode && thread) {
         await sendChannelDigestToThread(thread as Awaited<ReturnType<typeof createDailyDigestPost>>, channelId, digest, config);
@@ -232,7 +233,8 @@ const runDigestForGuild = async (
         channelId,
         channelName,
         thread,
-        true
+        true,
+        guildId
       );
 
       if (result.success) {
@@ -281,7 +283,8 @@ const runDigestForGuild = async (
         channelId,
         channelName,
         null,
-        false
+        false,
+        guildId
       );
 
       if (result.success) {

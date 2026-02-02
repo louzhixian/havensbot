@@ -2,7 +2,7 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { AppConfig } from "./config.js";
 import { prisma } from "./db.js";
-import { createLlmClient } from "./llm/client.js";
+import { callLlmWithQuota } from "./services/llm.service.js";
 import {
   collapseWhitespace,
   fetchArticleText,
@@ -126,7 +126,8 @@ const fetchRawText = async (
 
 export const generateDeepDive = async (
   config: AppConfig,
-  rawUrl: string
+  rawUrl: string,
+  guildId?: string
 ): Promise<DeepDiveResult> => {
   const canonicalUrl = resolveCanonicalUrl(rawUrl);
   const item = await prisma.item.findFirst({
@@ -182,8 +183,8 @@ export const generateDeepDive = async (
     };
   }
 
-  if (!isLlmEnabled(config)) {
-    const reason = "LLM disabled or missing config.";
+  if (!isLlmEnabled(config) || !guildId) {
+    const reason = !guildId ? "No guild context for LLM quota." : "LLM disabled or missing config.";
     await prisma.item.update({
       where: { id: item.id },
       data: { deepDiveErrorReason: reason },
@@ -201,22 +202,16 @@ export const generateDeepDive = async (
       contentText:
         maxChars && maxChars > 0 ? truncate(content, maxChars) : content,
     });
-    const llmClient = createLlmClient(config);
-    const response = await llmClient.callWithFallback<string>(
-      {
-        operation: "deeper_analyze",
-        messages: [
-          { role: "system", content: prompt.system },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.2,
-        maxTokens: config.llmMaxTokens,
-      },
-      () => {
-        throw new Error("Deep analysis failed");
-      }
-    );
-    const deepDive = response.data!.trim();
+    const response = await callLlmWithQuota({
+      guildId,
+      system: prompt.system,
+      messages: [
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.2,
+      maxTokens: config.llmMaxTokens,
+    });
+    const deepDive = response.content.trim();
     const llmInsufficient = deepDive.includes(LLM_INSUFFICIENT_NOTICE);
     const errorReason = llmInsufficient
       ? "llm-insufficient"

@@ -1,5 +1,5 @@
 import type { AppConfig } from "../config.js";
-import { LlmClient, type LlmMessage } from "../llm/client.js";
+import { callLlmWithQuota } from "../services/llm.service.js";
 import { loadPromptSections, renderTemplate } from "../utils/prompt-utils.js";
 import { fetchArticleText } from "../utils.js";
 import { logger } from "../observability/logger.js";
@@ -9,7 +9,7 @@ const MAX_ARTICLE_LENGTH = 8000; // Leave room for conversation
 
 export const generateReadingsResponse = async (
   config: AppConfig,
-  llmClient: LlmClient,
+  guildId: string,
   articleUrl: string,
   userQuestion: string
 ): Promise<string> => {
@@ -28,8 +28,6 @@ export const generateReadingsResponse = async (
     } else {
       articleContent = content;
       // R-04: Detect if article was likely truncated
-      // fetchArticleText truncates at maxLength, so if we got exactly maxLength chars,
-      // it's likely the article was longer
       wasTruncated = content.length >= MAX_ARTICLE_LENGTH;
     }
   } catch (error) {
@@ -43,23 +41,17 @@ export const generateReadingsResponse = async (
     article_content: articleContent,
   });
 
-  const messages: LlmMessage[] = [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: userQuestion },
-  ];
-
-  const response = await llmClient.call({
-    operation: "readings_qa",
-    messages,
+  const response = await callLlmWithQuota({
+    guildId,
+    system: systemPrompt,
+    messages: [
+      { role: "user", content: userQuestion },
+    ],
     temperature: 0.3, // More factual for Q&A
     maxTokens: 500,
   });
 
-  if (!response.success || !response.data) {
-    throw new Error(response.error || "Failed to generate readings response");
-  }
-
-  let answer = response.data;
+  let answer = response.content;
   
   // R-04: Inform user if article was truncated
   if (wasTruncated) {

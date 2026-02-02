@@ -1,6 +1,5 @@
 import { Client, Message, ChannelType, type Interaction } from "discord.js";
 import type { AppConfig } from "../config.js";
-import { createLlmClient, LlmClient } from "../llm/client.js";
 import {
   handleDiaryMessage,
   getDiarySessionByThread,
@@ -28,8 +27,6 @@ export const registerDiaryMessageHandler = (
     return;
   }
 
-  const llmClient = createLlmClient(config);
-
   client.on("messageCreate", async (message: Message) => {
     // Ignore bot messages
     if (message.author.bot) return;
@@ -48,9 +45,12 @@ export const registerDiaryMessageHandler = (
       return;
     }
 
+    const guildId = message.guildId;
+    if (!guildId) return;
+
     // Handle the diary message
     try {
-      await handleDiaryMessage(config, llmClient, message);
+      await handleDiaryMessage(config, guildId, message);
     } catch (error) {
       logger.error(
         { error, threadId: message.channelId },
@@ -72,8 +72,6 @@ export const registerDiaryButtonHandler = (
   if (!config.diaryEnabled) {
     return;
   }
-
-  const llmClient = createLlmClient(config);
 
   client.on("interactionCreate", async (interaction: Interaction) => {
     if (!interaction.isButton()) return;
@@ -101,7 +99,7 @@ export const registerDiaryButtonHandler = (
         const result = await startDiarySessionInThread(
           config,
           client,
-          llmClient,
+          guild.id,
           threadId,
           interaction.user.id
         );
@@ -148,7 +146,7 @@ export const registerDiaryButtonHandler = (
         const result = await endDiarySessionByThread(
           config,
           client,
-          llmClient,
+          guild.id,
           threadId,
           "user_ended"
         );

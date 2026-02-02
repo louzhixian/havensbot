@@ -13,7 +13,7 @@ import { createForumPost } from "./messaging.js";
 import { truncate } from "./utils.js";
 import { buildMarkAsReadButton, READINGS_TOGGLE_PREFIX } from "./readings/buttons.js";
 import { logger } from "./observability/logger.js";
-import { createLlmClient } from "./llm/client.js";
+// LLM client import removed - now using callLlmWithQuota via readings/llm.ts
 import { generateReadingsResponse } from "./readings/llm.js";
 
 const BOOKMARK_EMOJI = "🔖";
@@ -288,8 +288,6 @@ export const registerReadingsMessageHandler = (
   client: Client,
   config: AppConfig
 ): void => {
-  const llmClient = createLlmClient(config);
-
   client.on("messageCreate", async (message) => {
     try {
       // Ignore bot messages
@@ -334,7 +332,7 @@ export const registerReadingsMessageHandler = (
       // Generate response
       const response = await generateReadingsResponse(
         config,
-        llmClient,
+        guildId,
         articleUrl,
         message.content
       );

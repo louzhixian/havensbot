@@ -12,7 +12,7 @@ import {
   truncate,
 } from "./utils.js";
 import { splitMessageContent } from "./messaging.js";
-import { createLlmClient, type LlmClient } from "./llm/client.js";
+import { callLlmWithQuota } from "./services/llm.service.js";
 import { loadPromptSections, renderTemplate } from "./utils/prompt-utils.js";
 
 const THREAD_TITLE = "翻译";
@@ -193,12 +193,6 @@ export const registerEditorialTranslationHandlers = (
   client: Client,
   config: AppConfig
 ): void => {
-  // Create LLM client once for reuse
-  const llmClient: LlmClient | null =
-    config.llmProvider !== "none" && config.llmApiKey && config.llmModel
-      ? createLlmClient(config)
-      : null;
-
   client.on("messageCreate", async (message) => {
     try {
       if (message.author.bot) return;
@@ -206,7 +200,8 @@ export const registerEditorialTranslationHandlers = (
 
       // Get editorial channel from database config
       if (!message.guild) return;
-      const editorialConfig = await getConfigByRole(message.guild.id, "editorial");
+      const guildId = message.guild.id;
+      const editorialConfig = await getConfigByRole(guildId, "editorial");
       const editorialChannelId = editorialConfig?.channelId;
       if (!editorialChannelId) return;
 
@@ -216,13 +211,6 @@ export const registerEditorialTranslationHandlers = (
 
       const input = await resolveTranslationInput(message, config); // E-04: Pass config
       if (!input) return;
-
-      if (!llmClient) {
-        await message.reply({
-          content: "LLM 未启用或缺少配置，无法翻译。",
-        });
-        return;
-      }
 
       const thread = await message.startThread({
         name: THREAD_TITLE,
@@ -262,20 +250,16 @@ export const registerEditorialTranslationHandlers = (
           contentText: truncate(chunk, TRANSLATION_CHUNK_CHARS),
         });
 
-        const llmResponse = await llmClient.call({
-          operation: "editorial_translation",
+        const llmResponse = await callLlmWithQuota({
+          guildId,
+          system: prompt.system,
           messages: [
-            { role: "system", content: prompt.system },
             { role: "user", content: userPrompt },
           ],
           temperature: 0.2,
         });
 
-        if (!llmResponse.success || !llmResponse.data) {
-          throw new Error(llmResponse.error || "LLM response missing content");
-        }
-
-        const outputChunks = splitMessageContent(llmResponse.data.trim(), 1800);
+        const outputChunks = splitMessageContent(llmResponse.content.trim(), 1800);
         for (const output of outputChunks) {
           await thread.send({ content: output });
         }

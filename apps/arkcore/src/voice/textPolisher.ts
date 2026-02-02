@@ -1,5 +1,5 @@
 import type { AppConfig } from "../config.js";
-import { createLlmClient } from "../llm/client.js";
+import { callLlmWithQuota, QuotaExceededError, TierRestrictedError } from "../services/llm.service.js";
 import { logger } from "../observability/logger.js";
 import { loadPromptSections, renderTemplate } from "../utils/prompt-utils.js";
 
@@ -8,11 +8,13 @@ import { loadPromptSections, renderTemplate } from "../utils/prompt-utils.js";
  *
  * @param transcribedText - Raw text from Whisper transcription
  * @param config - Application configuration
+ * @param guildId - Guild ID for quota management
  * @returns Polished text, or original text if LLM fails (graceful degradation)
  */
 export async function polishTranscript(
   transcribedText: string,
-  config: AppConfig
+  config: AppConfig,
+  guildId: string
 ): Promise<string> {
   const log = logger.child({ operation: "voice_polish" });
 
@@ -28,38 +30,26 @@ export async function polishTranscript(
       transcribedText,
     });
 
-    const llmClient = createLlmClient(config);
-    const response = await llmClient.callWithFallback<string>(
-      {
-        operation: "voice_polish",
-        messages: [
-          { role: "system", content: prompt.system },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.3,
-        maxTokens: config.llmMaxTokens,
-      },
-      () => transcribedText // Fallback: return original text
-    );
+    const response = await callLlmWithQuota({
+      guildId,
+      system: prompt.system,
+      messages: [
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.3,
+      maxTokens: config.llmMaxTokens,
+    });
 
-    if (response.success && response.data) {
-      if (response.degraded) {
-        log.info("LLM polish unavailable, using original transcript");
-      } else {
-        log.info(
-          { latency: response.latency, cost: response.cost },
-          "Transcript polished successfully"
-        );
-      }
-      return response.data;
-    }
-
-    // Should not reach here due to fallback, but handle just in case
-    log.warn({ error: response.error }, "LLM polish failed, using original");
-    return transcribedText;
+    log.info("Transcript polished successfully");
+    return response.content;
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    log.error({ error: errorMessage }, "Failed to polish transcript");
+    if (error instanceof QuotaExceededError || error instanceof TierRestrictedError) {
+      log.warn({ error: error.message }, "LLM quota/tier issue, using original transcript");
+    } else {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      log.error({ error: errorMessage }, "Failed to polish transcript");
+    }
+    // Graceful degradation: return original text
     return transcribedText;
   }
 }

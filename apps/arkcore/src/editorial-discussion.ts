@@ -8,7 +8,7 @@ import { AppConfig } from "./config.js";
 import { getConfigByRole } from "./channel-config.js";
 import { collapseWhitespace, stripHtml, truncate } from "./utils.js";
 import { splitMessageContent } from "./messaging.js";
-import { createLlmClient, type LlmClient } from "./llm/client.js";
+import { callLlmWithQuota } from "./services/llm.service.js";
 import { loadPromptSections, renderTemplate } from "./utils/prompt-utils.js";
 
 const THREAD_TITLE = "创作讨论";
@@ -105,21 +105,16 @@ export const registerEditorialDiscussionHandlers = (
   client: Client,
   config: AppConfig
 ): void => {
-  // Create LLM client once for reuse
-  const llmClient: LlmClient | null =
-    config.llmProvider !== "none" && config.llmApiKey && config.llmModel
-      ? createLlmClient(config)
-      : null;
-
   client.on("messageCreate", async (message) => {
     try {
       if (message.author.bot) return;
       if (!message.guild) return;
+      const guildId = message.guild.id;
 
       // 从数据库获取配置
       let editorialConfig;
       try {
-        editorialConfig = await getConfigByRole(message.guild.id, "editorial");
+        editorialConfig = await getConfigByRole(guildId, "editorial");
       } catch (error) {
         console.error("Failed to fetch editorial config", error);
         // Continue - treat as if no config exists
@@ -152,13 +147,6 @@ export const registerEditorialDiscussionHandlers = (
         return;
       }
 
-      if (!llmClient) {
-        await thread.send({
-          content: "LLM 未启用或缺少配置，无法生成内容。",
-        });
-        return;
-      }
-
       const starter = await thread.fetchStarterMessage().catch(() => null);
       if (!starter) {
         await thread.send({ content: "无法获取原始消息，无法生成内容。" });
@@ -175,20 +163,16 @@ export const registerEditorialDiscussionHandlers = (
 
       await thread.send({ content: "正在生成内容，请稍候..." });
 
-      const llmResponse = await llmClient.call({
-        operation: "editorial_discussion",
+      const llmResponse = await callLlmWithQuota({
+        guildId,
+        system: prompt.system,
         messages: [
-          { role: "system", content: prompt.system },
           { role: "user", content: userPrompt },
         ],
         temperature: 0.3,
       });
 
-      if (!llmResponse.success || !llmResponse.data) {
-        throw new Error(llmResponse.error || "LLM response missing content");
-      }
-
-      const chunks = splitMessageContent(llmResponse.data.trim(), 1800);
+      const chunks = splitMessageContent(llmResponse.content.trim(), 1800);
       for (const chunk of chunks) {
         await thread.send({ content: chunk });
       }

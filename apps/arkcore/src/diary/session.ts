@@ -6,7 +6,6 @@ import {
 } from "discord.js";
 import { prisma, type DiarySession } from "../db.js";
 import type { AppConfig } from "../config.js";
-import { LlmClient } from "../llm/client.js";
 import { logger } from "../observability/logger.js";
 import { generateDiaryResponse, generateOpeningMessage, generateFarewellMessage } from "./llm.js";
 import { exportDiary, createAttachmentBuffer } from "./export.js";
@@ -69,7 +68,7 @@ export const createDailyDiaryPost = async (
 export const startDiarySessionInThread = async (
   config: AppConfig,
   client: Client,
-  llmClient: LlmClient,
+  guildId: string,
   threadId: string,
   userId: string
 ): Promise<DiaryStartResult> => {
@@ -92,12 +91,6 @@ export const startDiarySessionInThread = async (
 
   const channelId = thread.parentId;
 
-  // Get guildId from thread
-  const guildId = "guildId" in thread ? thread.guildId : null;
-  if (!guildId) {
-    throw new Error("Cannot determine guild for thread");
-  }
-
   // D-04: Check if user already has an active session in this guild
   const userActiveSession = await prisma.diarySession.findFirst({
     where: {
@@ -114,7 +107,7 @@ export const startDiarySessionInThread = async (
   }
 
   // Generate opening message
-  const openingMessage = await generateOpeningMessage(config, llmClient);
+  const openingMessage = await generateOpeningMessage(config, guildId);
 
   // Set up today's date for session
   const todayStart = new Date(now);
@@ -158,7 +151,7 @@ export const startDiarySessionInThread = async (
  */
 export const handleDiaryMessage = async (
   config: AppConfig,
-  llmClient: LlmClient,
+  guildId: string,
   message: Message
 ): Promise<void> => {
   // Find active session for this thread
@@ -201,7 +194,7 @@ export const handleDiaryMessage = async (
 
   // Generate response
   try {
-    const response = await generateDiaryResponse(config, llmClient, messages);
+    const response = await generateDiaryResponse(config, guildId, messages);
 
     // Add bot response to cache
     messages.push({
@@ -236,7 +229,7 @@ export const handleDiaryMessage = async (
 export const endDiarySession = async (
   config: AppConfig,
   client: Client,
-  llmClient: LlmClient,
+  guildId: string,
   sessionId: string,
   reason: string
 ): Promise<DiaryEndResult> => {
@@ -256,7 +249,7 @@ export const endDiarySession = async (
   const now = new Date();
 
   // Generate farewell message
-  const farewell = await generateFarewellMessage(config, llmClient, messages);
+  const farewell = await generateFarewellMessage(config, guildId, messages);
 
   // Export diary
   const exportResult = await exportDiary(
@@ -318,7 +311,7 @@ export const endDiarySession = async (
 export const endDiarySessionByThread = async (
   config: AppConfig,
   client: Client,
-  llmClient: LlmClient,
+  guildId: string,
   threadId: string,
   reason: string
 ): Promise<DiaryEndResult> => {
@@ -330,7 +323,7 @@ export const endDiarySessionByThread = async (
     throw new Error("No active diary session in this thread");
   }
 
-  return endDiarySession(config, client, llmClient, session.id, reason);
+  return endDiarySession(config, client, guildId, session.id, reason);
 };
 
 /**
@@ -365,7 +358,6 @@ export const getDiarySessionByThread = async (
 export const checkTimeoutSessions = async (
   config: AppConfig,
   client: Client,
-  llmClient: LlmClient,
   guildId?: string
 ): Promise<number> => {
   const timeoutMs = config.diaryTimeoutMinutes * 60 * 1000;
@@ -383,7 +375,7 @@ export const checkTimeoutSessions = async (
   let endedCount = 0;
   for (const session of timedOutSessions) {
     try {
-      await endDiarySession(config, client, llmClient, session.id, "timeout");
+      await endDiarySession(config, client, session.guildId, session.id, "timeout");
       endedCount++;
     } catch (error) {
       logger.error(

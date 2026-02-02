@@ -99,7 +99,7 @@ async function handleVoiceMessage(
     const rawText = await transcribe(audioBuffer, config);
 
     // Polish transcript
-    const polishedText = await polishTranscript(rawText, config);
+    const polishedText = await polishTranscript(rawText, config, message.guildId!);
 
     // Create thread with result
     const thread = await message.startThread({
@@ -240,7 +240,7 @@ const retryReactionHandler: ReactionHandler = {
       // Download and transcribe
       const audioBuffer = await downloadAudio(record.audioUrl);
       const rawText = await transcribe(audioBuffer, config);
-      const polishedText = await polishTranscript(rawText, config);
+      const polishedText = await polishTranscript(rawText, config, starterMessage.guildId!);
 
       await thread.send({ content: polishedText });
 

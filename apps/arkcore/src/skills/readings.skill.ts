@@ -32,7 +32,6 @@ import {
   READINGS_TOGGLE_PREFIX,
 } from "../readings/buttons.js";
 import { logger } from "../observability/logger.js";
-import { createLlmClient } from "../llm/client.js";
 import { generateReadingsResponse } from "../readings/llm.js";
 import { CacheStore } from "../utils/cache-store.js";
 import { prisma } from "../db.js";
@@ -398,7 +397,6 @@ const readingsQAHandler: MessageHandler = {
     }
 
     const config = loadConfig();
-    const llmClient = createLlmClient(config);
 
     // Show typing indicator
     if ('sendTyping' in message.channel) {
@@ -408,7 +406,7 @@ const readingsQAHandler: MessageHandler = {
     // Generate response
     const response = await generateReadingsResponse(
       config,
-      llmClient,
+      guildId,
       articleUrl,
       message.content
     );

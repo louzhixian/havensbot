@@ -10,7 +10,7 @@ import {
   stripHtml,
   truncate,
 } from "./utils.js";
-import { createLlmClient } from "./llm/client.js";
+import { callLlmWithQuota, QuotaExceededError } from "./services/llm.service.js";
 import { recordMetric } from "./observability/metrics.js";
 
 type SourceWithItems = Source & { items: Item[] };
@@ -352,10 +352,12 @@ const fetchFullTextForItems = async (
 const callLlmForDigest = async (
   config: AppConfig,
   items: InternalItem[],
-  maxSummaryChars: number
+  maxSummaryChars: number,
+  guildId?: string
 ): Promise<Map<string, string> | null> => {
   if (!config.llmApiKey || !config.llmModel) return null;
   if (items.length === 0) return null;
+  if (!guildId) return null;
 
   const payloadItems = items.map((item) => ({
     url: item.url,
@@ -371,26 +373,29 @@ const callLlmForDigest = async (
     payloadItems
   )}`;
 
-  const llmClient = createLlmClient(config);
-  const response = await llmClient.callWithFallback(
-    {
-      operation: "digest_summarize",
+  let content: string;
+  try {
+    const response = await callLlmWithQuota({
+      guildId,
+      system: systemPrompt,
       messages: [
-        { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
       temperature: 0.3,
       maxTokens: config.llmMaxTokens,
-    },
-    () => null // Fallback returns null
-  );
-
-  if (!response.data) {
-    debugLog("llm-null-response", { items: items.length });
+    });
+    content = response.content;
+  } catch (error) {
+    if (error instanceof QuotaExceededError) {
+      debugLog("llm-quota-exceeded", { guildId });
+    }
     return null;
   }
 
-  const content = response.data;
+  if (!content) {
+    debugLog("llm-null-response", { items: items.length });
+    return null;
+  }
 
   const parsed = parseJsonBlock(content);
   if (!parsed || typeof parsed !== "object") {
@@ -463,7 +468,8 @@ export const buildDigestData = async (
   config: AppConfig,
   channelId: string,
   rangeStart: Date,
-  rangeEnd: Date
+  rangeEnd: Date,
+  guildId?: string
 ): Promise<DigestData> => {
   const startTime = Date.now();
   console.log(`digest build: start channelId=${channelId}`);
@@ -589,7 +595,8 @@ export const buildDigestData = async (
         const result = await callLlmForDigest(
           config,
           batch,
-          config.digestItemSummaryMaxChars
+          config.digestItemSummaryMaxChars,
+          guildId
         );
         if (!result) {
           anyEmpty = true;
@@ -675,10 +682,11 @@ export const createDigest = async (
   config: AppConfig,
   channelId: string,
   rangeStart: Date,
-  rangeEnd: Date
+  rangeEnd: Date,
+  guildId?: string
 ): Promise<DigestData> => {
   try {
-    const digest = await buildDigestData(config, channelId, rangeStart, rangeEnd);
+    const digest = await buildDigestData(config, channelId, rangeStart, rangeEnd, guildId);
 
     await prisma.digest.create({
       data: {

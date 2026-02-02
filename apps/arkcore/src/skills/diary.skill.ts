@@ -25,7 +25,6 @@ import type {
   SkillCronJob,
 } from "./types.js";
 import { loadConfig } from "../config.js";
-import { createLlmClient } from "../llm/client.js";
 import { logger } from "../observability/logger.js";
 import {
   getDiarySessionByThread,
@@ -63,14 +62,12 @@ const diaryMessageHandler: MessageHandler = {
       return;
     }
 
-    // TODO (D-01): 考虑在 SkillContext 中预创建 llmClient
-    // 或添加 lazy 初始化的单例，避免重复创建
     const config = loadConfig();
-    const llmClient = createLlmClient(config);
+    const guildId = message.guildId!;
 
     // Handle the diary message
     try {
-      await handleDiaryMessage(config, llmClient, message);
+      await handleDiaryMessage(config, guildId, message);
     } catch (error) {
       logger.error(
         { error, threadId: message.channelId },
@@ -103,16 +100,13 @@ const diaryStartButtonHandler: ButtonHandler = {
         return;
       }
 
-      // TODO (D-01): 考虑在 SkillContext 中预创建 llmClient
-      // 或添加 lazy 初始化的单例，避免重复创建
       const config = loadConfig();
-      const llmClient = createLlmClient(config);
 
       // Start the session in this thread (D-04: pass userId for concurrency limit)
       const result = await startDiarySessionInThread(
         config,
         ctx.client,
-        llmClient,
+        guild.id,
         threadId,
         interaction.user.id
       );
@@ -163,16 +157,13 @@ const diaryEndButtonHandler: ButtonHandler = {
 
       const threadId = message.channelId;
 
-      // TODO (D-01): 考虑在 SkillContext 中预创建 llmClient
-      // 或添加 lazy 初始化的单例，避免重复创建
       const config = loadConfig();
-      const llmClient = createLlmClient(config);
 
       // End the session
       const result = await endDiarySessionByThread(
         config,
         ctx.client,
-        llmClient,
+        guild.id,
         threadId,
         "user_ended"
       );
@@ -248,13 +239,9 @@ const diaryTimeoutCheckCron: SkillCronJob = {
       return;
     }
 
-    // TODO (D-01): 考虑在 SkillContext 中预创建 llmClient
-    // 或添加 lazy 初始化的单例，避免重复创建
-    const llmClient = createLlmClient(config);
-
     try {
       // D-02: Only check sessions for this specific guild
-      await checkTimeoutSessions(config, ctx.client, llmClient, guildId);
+      await checkTimeoutSessions(config, ctx.client, guildId);
     } catch (error) {
       logger.error({ error, guildId }, "Diary timeout check failed");
     }

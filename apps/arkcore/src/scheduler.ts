@@ -17,7 +17,7 @@ import { sendDailyReport } from "./observability/discord-notifier.js";
 import { runArchivalProcess } from "./archival/archiver.js";
 import { logger } from "./observability/logger.js";
 import { checkTimeoutSessions, createDailyDiaryPost } from "./diary/session.js";
-import { createLlmClient } from "./llm/client.js";
+// LLM client import removed - now using callLlmWithQuota via session functions
 import { getAllGuildSettings, getSkillConfig } from "./guild-settings.js";
 import type { SkillRegistry, SkillContext } from "./skills/index.js";
 import { resetExpiredQuotas } from "./services/quota-reset.service.js";
@@ -29,7 +29,8 @@ import { checkExpiringSubscriptions } from "./services/subscription-reminder.ser
 const processDigestForChannel = async (
   client: Client,
   config: AppConfig,
-  channelId: string
+  channelId: string,
+  guildId?: string
 ): Promise<void> => {
   const channelStart = Date.now();
 
@@ -37,7 +38,7 @@ const processDigestForChannel = async (
   console.log(
     `digest channel start: channelId=${channelId} rangeStart=${rangeStart.toISOString()} rangeEnd=${rangeEnd.toISOString()}`
   );
-  const digest = await createDigest(config, channelId, rangeStart, rangeEnd);
+  const digest = await createDigest(config, channelId, rangeStart, rangeEnd, guildId);
   const meta = digest.summaryMeta;
   const llmState = meta.llmEnabled ? (meta.llmUsed ? "on" : "fallback") : "off";
   const fallback = meta.fallbackReason ?? "none";
@@ -279,7 +280,7 @@ export const startSchedulers = (
                 `digest channel start: channelId=${channelId} rangeStart=${rangeStart.toISOString()} rangeEnd=${rangeEnd.toISOString()}`
               );
 
-              const digest = await createDigest(config, channelId, rangeStart, rangeEnd);
+              const digest = await createDigest(config, channelId, rangeStart, rangeEnd, guildId);
               const meta = digest.summaryMeta;
               const llmState = meta.llmEnabled ? (meta.llmUsed ? "on" : "fallback") : "off";
               const fallback = meta.fallbackReason ?? "none";
@@ -303,7 +304,7 @@ export const startSchedulers = (
           // Non-forum mode: process each channel individually
           for (const { channelId } of channelsToProcess) {
             try {
-              await processDigestForChannel(client, config, channelId);
+              await processDigestForChannel(client, config, channelId, guildId);
             } catch (error) {
               console.error(`digest job failed for channel ${channelId}`, error);
             }
@@ -410,13 +411,11 @@ export const startSchedulers = (
 
   // Diary timeout checker (every 5 minutes)
   if (config.diaryEnabled) {
-    const llmClient = createLlmClient(config);
-
     cron.schedule(
       "*/5 * * * *",
       async () => {
         try {
-          await checkTimeoutSessions(config, client, llmClient);
+          await checkTimeoutSessions(config, client);
         } catch (error) {
           logger.error({ error }, "Diary timeout check failed");
         }

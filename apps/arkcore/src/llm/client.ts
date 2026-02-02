@@ -1,3 +1,8 @@
+/**
+ * @deprecated This module is no longer used. All LLM calls have been migrated
+ * to `services/llm.service.ts` which provides quota-aware access via `callLlmWithQuota`.
+ * This file can be safely removed once confirmed no external consumers remain.
+ */
 import type { AppConfig } from "../config.js";
 import { logger } from "../observability/logger.js";
 import { recordMetric } from "../observability/metrics.js";

@@ -132,7 +132,7 @@ async function handleVoiceMessage(
 
     // Polish transcript
     log.debug("Polishing transcript");
-    const polishedText = await polishTranscript(rawText, config);
+    const polishedText = await polishTranscript(rawText, config, message.guildId!);
     log.info({ polishedLength: polishedText.length }, "Text polished");
 
     // Create thread with result
@@ -256,7 +256,7 @@ async function handleRetry(
     // Download and transcribe
     const audioBuffer = await downloadAudio(record.audioUrl);
     const rawText = await transcribe(audioBuffer, config);
-    const polishedText = await polishTranscript(rawText, config);
+    const polishedText = await polishTranscript(rawText, config, starterMessage.guildId!);
 
     await thread.send({ content: polishedText });
 

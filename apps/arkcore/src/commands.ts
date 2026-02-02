@@ -78,7 +78,7 @@ import {
   listRecentDiarySessions,
   getDiarySessionByThread,
 } from "./diary/index.js";
-import { createLlmClient } from "./llm/client.js";
+// LLM client import removed - now using callLlmWithQuota via session functions
 import { formatDiaryDate } from "./diary/context.js";
 
 /**
@@ -102,9 +102,10 @@ const processDigestJob = async (
   channelId: string,
   rangeStart: Date,
   rangeEnd: Date,
-  digestForumId?: string
+  digestForumId?: string,
+  guildId?: string
 ): Promise<DigestResult> => {
-  const digest = await createDigest(config, channelId, rangeStart, rangeEnd);
+  const digest = await createDigest(config, channelId, rangeStart, rangeEnd, guildId);
 
   let sendResult: { threadId?: string; totalItems: number; failedItems: number };
 
@@ -948,7 +949,8 @@ export const handleInteraction = async (
           rangeEnd,
           config,
           client,
-          digestForumId
+          digestForumId,
+          guildId ?? undefined
         );
 
         const meta = result.digest.summaryMeta;
@@ -1142,11 +1144,10 @@ export const handleInteraction = async (
       await interaction.deferReply({ ephemeral: true });
 
       try {
-        const llmClient = createLlmClient(config);
         const result = await endDiarySessionByThread(
           config,
           client,
-          llmClient,
+          interaction.guildId!,
           interaction.channelId,
           "manual"
         );

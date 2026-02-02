@@ -17,7 +17,7 @@ import type { GuildSettings } from "@prisma/client";
 import type { Skill, SkillContext, MessageHandler } from "./types.js";
 import { getConfigByRole } from "../channel-config.js";
 import { loadConfig, type AppConfig } from "../config.js";
-import { createLlmClient, type LlmClient } from "../llm/client.js";
+import { callLlmWithQuota, QuotaExceededError, TierRestrictedError } from "../services/llm.service.js";
 import { splitMessageContent } from "../messaging.js";
 import {
   collapseWhitespace,
@@ -98,7 +98,6 @@ const renderTemplate = (
 
 /**
  * Check if LLM is enabled and configured.
- * C-01: Updated to use standard LlmClient check pattern.
  */
 const isLlmEnabled = (config: AppConfig): boolean =>
   config.llmProvider !== "none" &&
@@ -106,30 +105,25 @@ const isLlmEnabled = (config: AppConfig): boolean =>
   Boolean(config.llmModel);
 
 /**
- * Call LLM using the unified LlmClient.
- * C-01: Migrated from direct fetch to createLlmClient factory.
+ * Call LLM using quota-aware service.
+ * Migrated from LlmClient to callLlmWithQuota (Anthropic SDK + quota management).
  */
 const callLlm = async (
-  llmClient: LlmClient,
-  operation: string,
+  guildId: string,
   systemPrompt: string,
   userPrompt: string,
   temperature = 0.3
 ): Promise<string> => {
-  const response = await llmClient.call({
-    operation,
+  const response = await callLlmWithQuota({
+    guildId,
+    system: systemPrompt,
     messages: [
-      { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
     temperature,
   });
 
-  if (!response.success || !response.data) {
-    throw new Error(response.error || "LLM call failed");
-  }
-
-  return response.data;
+  return response.content;
 };
 
 // ============================================================================
@@ -488,7 +482,7 @@ const editorialChannelHandler: MessageHandler = {
 
     await thread.send({ content: "正在翻译，请稍候..." });
 
-    const llmClient = createLlmClient(config);
+    const guildId = message.guildId!;
     let index = 0;
     for (const chunk of chunks) {
       index += 1;
@@ -499,8 +493,7 @@ const editorialChannelHandler: MessageHandler = {
         contentText: truncate(chunk, TRANSLATION_CHUNK_CHARS),
       });
       const response = await callLlm(
-        llmClient,
-        "editorial_translation",
+        guildId,
         prompt.system,
         userPrompt,
         0.2
@@ -570,10 +563,8 @@ const editorialThreadHandler: MessageHandler = {
 
     await thread.send({ content: "正在生成内容，请稍候..." });
 
-    const llmClient = createLlmClient(config);
     const response = await callLlm(
-      llmClient,
-      "editorial_discussion",
+      message.guild!.id,
       prompt.system,
       userPrompt,
       0.3

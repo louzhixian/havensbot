@@ -17,6 +17,7 @@ export type DigestJob = {
   config: AppConfig;
   client: Client;
   digestForumId?: string;
+  guildId?: string;
   resolve: (result: DigestResult) => void;
   reject: (error: Error) => void;
   addedAt: number;
@@ -35,7 +36,8 @@ export type DigestProcessor = (
   channelId: string,
   rangeStart: Date,
   rangeEnd: Date,
-  digestForumId?: string
+  digestForumId?: string,
+  guildId?: string
 ) => Promise<DigestResult>;
 
 class DigestQueue {
@@ -59,7 +61,8 @@ class DigestQueue {
     rangeEnd: Date,
     config: AppConfig,
     client: Client,
-    digestForumId?: string
+    digestForumId?: string,
+    guildId?: string
   ): Promise<DigestResult> {
     return new Promise((resolve, reject) => {
       const job: DigestJob = {
@@ -69,6 +72,7 @@ class DigestQueue {
         config,
         client,
         digestForumId,
+        guildId,
         resolve,
         reject,
         addedAt: Date.now(),
@@ -146,7 +150,8 @@ class DigestQueue {
         job.channelId,
         job.rangeStart,
         job.rangeEnd,
-        job.digestForumId
+        job.digestForumId,
+        job.guildId
       );
       job.resolve(result);
     } catch (error) {
